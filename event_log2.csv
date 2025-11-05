@@ -1,0 +1,21 @@
+case,activity,timestamp
+Case1,Approve Request,2025-11-08 15:29:00
+Case1,Approve Request,2025-11-09 01:10:00
+Case1,Submit Request,2025-11-08 22:52:00
+Case1,Submit Request,2025-11-09 01:18:00
+Case2,Notify Completion,2025-11-08 08:04:00
+Case2,Submit Request,2025-11-09 07:26:00
+Case2,Approve Request,2025-11-09 07:58:00
+Case2,Manager Review,2025-11-06 23:09:00
+Case3,Submit Request,2025-11-09 12:34:00
+Case3,Submit Request,2025-11-08 00:01:00
+Case3,Submit Request,2025-11-07 21:57:00
+Case3,Approve Request,2025-11-09 10:45:00
+Case4,Submit Request,2025-11-06 14:20:00
+Case4,Approve Request,2025-11-08 14:55:00
+Case4,Submit Request,2025-11-09 09:05:00
+Case4,Submit Request,2025-11-07 02:43:00
+Case5,Notify Completion,2025-11-07 07:12:00
+Case5,Approve Request,2025-11-07 23:05:00
+Case5,Approve Request,2025-11-07 07:27:00
+Case5,Approve Request,2025-11-06 12:57:00

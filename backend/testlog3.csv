@@ -1,0 +1,21 @@
+case,activity,timestamp
+Case1,Manager Review,2025-11-09 01:27:00
+Case1,Manager Review,2025-11-10 11:00:00
+Case1,Reject Request,2025-11-08 01:03:00
+Case1,Manager Review,2025-11-10 11:33:00
+Case2,Rework Request,2025-11-10 21:52:00
+Case2,Reject Request,2025-11-10 13:11:00
+Case2,Reject Request,2025-11-08 01:36:00
+Case2,Manager Review,2025-11-08 23:22:00
+Case3,Manager Review,2025-11-10 07:17:00
+Case3,Manager Review,2025-11-08 21:16:00
+Case3,Submit Request,2025-11-07 19:23:00
+Case3,Reject Request,2025-11-10 08:12:00
+Case4,Process Request,2025-11-10 11:22:00
+Case4,Reject Request,2025-11-10 07:56:00
+Case4,Reject Request,2025-11-10 06:10:00
+Case4,Manager Review,2025-11-09 06:51:00
+Case5,Reject Request,2025-11-08 03:50:00
+Case5,Process Request,2025-11-09 18:18:00
+Case5,Process Request,2025-11-10 18:22:00
+Case5,Reject Request,2025-11-07 23:20:00
