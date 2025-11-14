@@ -33,24 +33,59 @@ def effect_size_eta_squared(stat, n_total):
 @app.post("/dfg_multi")
 async def dfg_multi(files: list[UploadFile] = File(...)):
     try:
-        '''Wang '''
         if not files:
             raise HTTPException(status_code=400, detail="No files uploaded")
 
-        logs, names = [], []
+        results = []
+
         for file in files:
+            # Read CSV
             df = pd.read_csv(file.file)
-            col_map = {"case": "case:concept:name", "activity": "concept:name", "timestamp": "time:timestamp"}
+
+            # Rename columns to PM4Py standard
+            col_map = {
+                "case": "case:concept:name",
+                "activity": "concept:name",
+                "timestamp": "time:timestamp"
+            }
             df.rename(columns=col_map, inplace=True)
+
+            # Validate required columns
             for col in ["case:concept:name", "concept:name", "time:timestamp"]:
                 if col not in df.columns:
-                    raise HTTPException(status_code=400, detail=f"Missing column {col} in {file.filename}")
-            df['time:timestamp'] = pd.to_datetime(df['time:timestamp'], errors='coerce')
-            if df['time:timestamp'].isna().any():
-                raise HTTPException(status_code=400, detail=f"Invalid timestamps in {file.filename}")
-            logs.append(log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG))
-            names.append(file.filename)
-        '''Wang '''
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Missing column {col} in file {file.filename}"
+                    )
+
+            # Convert timestamp
+            df["time:timestamp"] = pd.to_datetime(df["time:timestamp"], errors="coerce")
+            if df["time:timestamp"].isna().any():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid timestamps in file {file.filename}"
+                )
+
+            # Convert DF → Event Log
+            log = log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG)
+
+            # Generate DFG
+            dfg = dfg_discovery.apply(log)
+
+            # Convert DFG to JSONable dict
+            dfg_json = {str(k): v for k, v in dfg.items()}
+
+            # Store result
+            results.append({
+                "filename": file.filename,
+                "dfg": dfg_json
+            })
+
+        return {"results": results}
+
+    except Exception as e:
+        print("Error in /dfg_multi:", e)
+        raise HTTPException(status_code=500, detail=str(e))
         
         
         #Wang
