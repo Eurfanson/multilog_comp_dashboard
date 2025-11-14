@@ -66,20 +66,21 @@ async def dfg_multi(files: list[UploadFile] = File(...)):
             normal = all(len(lst) > 3 and shapiro(lst)[1] > 0.05 for lst in valid_lists)
 
             # Select test
+            
             if len(valid_lists) == 2:
                 if normal:
                     stat, p = ttest_ind(*valid_lists, equal_var=False)
                     test_name = "t-test (independent)"
                 else:
                     stat, p = kruskal(*valid_lists)
-                    test_name = "Kruskal-Wallis"
+                    test_name = "Kruskal-Wallis" #added kruskal-wallis test 
             else:
                 if normal:
                     stat, p = f_oneway(*valid_lists)
-                    test_name = "One-way ANOVA"
+                    test_name = "One-way ANOVA" #added one way anova test
                 else:
                     stat, p = kruskal(*valid_lists)
-                    test_name = "Kruskal-Wallis"
+                    test_name = "Kruskal-Wallis"  #added kruskal-wallis test 
 
             n_total = sum(len(lst) for lst in valid_lists)
             eta2 = effect_size_eta_squared(stat, n_total)
