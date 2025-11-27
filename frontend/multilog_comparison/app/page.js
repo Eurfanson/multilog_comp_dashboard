@@ -1,34 +1,93 @@
 "use client";
-
+import React from "react";
 import { useState, useRef, useEffect } from "react";
 import { Network, DataSet } from "vis-network/standalone";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { motion, AnimatePresence } from "framer-motion";
 
-function StatsDashboard({ stats }) {
-  if (!stats) return null;
+// ---------------- Variant Bar Charts ----------------
+function VariantBarCharts({ variants, logNames }) {
+  if (!variants?.length || !logNames?.length) return null;
 
   return (
-    <div style={{ marginTop: "40px", background: "rgba(255,255,255,0.25)", backdropFilter: "blur(12px)", borderRadius: "20px", padding: "30px", boxShadow: "0 8px 32px rgba(0,0,0,0.1)", border: "1px solid rgba(255,255,255,0.2)" }}>
-      <h2 style={{ fontSize: "1.5rem", marginBottom: "20px", textAlign: "center", fontWeight: "600", color: "#111" }}>Node Statistics</h2>
+    <div style={{ marginTop: 20, maxHeight: "800px", overflowY: "auto", paddingRight: 8 }}>
+      <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 14, color: "#333" }}>Variant Frequencies</h3>
+      {variants.map(v => {
+        const data = logNames.map((_, idx) => ({
+          logIndex: (idx + 1).toString(),
+          count: v.counts_per_log?.[idx] || 0
+        }));
+        return (
+          <div key={v.key} style={{
+            marginBottom: 20,
+            padding: 14,
+            borderRadius: 14,
+            background: "#fff",
+            boxShadow: "0 8px 20px rgba(0,0,0,0.08)"
+          }}>
+            <h4 style={{ marginBottom: 6, fontWeight: 600, fontSize: 12, color: "#111" }}>
+              {v.sequence.join("→")}
+            </h4>
+            <ResponsiveContainer width="100%" height={120}>
+              <BarChart layout="vertical" data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="logIndex" tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#4e79a7" radius={[4, 4, 0, 0]} barSize={16} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------- Stats Dashboard ----------------
+function StatsDashboard({ stats }) {
+  const [expandedNodes, setExpandedNodes] = useState({});
+  const togglePosthoc = (node) => setExpandedNodes(prev => ({ ...prev, [node]: !prev[node] }));
+
+  if (!stats) return null;
+  return (
+    <div style={{ marginTop: 30, padding: 22, borderRadius: 16, background: "rgba(255,255,255,0.18)", backdropFilter: "blur(10px)", boxShadow: "0 12px 30px rgba(0,0,0,0.06)" }}>
+      <h2 style={{ fontWeight: 700, fontSize: 16, marginBottom: 15, textAlign: "center", color: "#222" }}>Node Statistics</h2>
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", borderRadius: "10px", overflow: "hidden" }}>
-          <thead style={{ background: "rgba(255,255,255,0.5)", fontWeight: "600", color: "#333" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead style={{ fontWeight: 600, background: "#f5f5f5" }}>
             <tr>
-              <th style={{ padding: "12px" }}>Node</th>
-              <th style={{ padding: "12px" }}>Test</th>
-              <th style={{ padding: "12px" }}>Statistic</th>
-              <th style={{ padding: "12px" }}>p-value</th>
-              <th style={{ padding: "12px" }}>Effect Size (η²)</th>
+              <th style={{ padding: 10 }}>Node</th>
+              <th style={{ padding: 10 }}>Test</th>
+              <th style={{ padding: 10 }}>Test Statistic</th>
+              <th style={{ padding: 10 }}>p-value</th>
+              <th style={{ padding: 10 }}>Effect Size</th>
+              <th style={{ padding: 10 }}>Post-hoc</th>
             </tr>
           </thead>
           <tbody>
-            {Object.entries(stats).map(([node, { stat, p_value, effect_size, test }], i) => (
-              <tr key={node} style={{ background: i % 2 ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.3)" }}>
-                <td style={{ padding: "10px", textAlign: "center" }}>{node}</td>
-                <td style={{ padding: "10px", textAlign: "center" }}>{test ?? "-"}</td>
-                <td style={{ padding: "10px", textAlign: "center" }}>{stat?.toFixed(3) ?? "-"}</td>
-                <td style={{ padding: "10px", textAlign: "center", color: p_value < 0.05 ? "#ff4d4d" : "#2ecc71", fontWeight: "600" }}>{p_value.toFixed(4)}</td>
-                <td style={{ padding: "10px", textAlign: "center" }}>{effect_size?.toFixed(3) ?? "-"}</td>
-              </tr>
+            {Object.entries(stats).map(([node, { stat, p_value, effect_size, test, posthoc }], i) => (
+              <React.Fragment key={node}>
+                <tr style={{ background: i % 2 ? "#fff" : "#f9f9f9" }}>
+                  <td style={{ padding: 8, textAlign: "center" }}>{node}</td>
+                  <td style={{ padding: 8, textAlign: "center" }}>{test ?? "-"}</td>
+                  <td style={{ padding: 8, textAlign: "center" }}>{stat !== null && stat !== undefined ? stat.toFixed(3) : "-"}</td>
+                  <td style={{ padding: 8, textAlign: "center", color: p_value < 0.05 ? "#ff4d4d" : "#2ecc71", fontWeight: 600 }}>
+                    {p_value !== null && p_value !== undefined ? p_value.toFixed(4) : "-"}
+                  </td>
+                  <td style={{ padding: 8, textAlign: "center" }}>{typeof effect_size === "number" ? effect_size.toFixed(3) : "-"}</td>
+                  <td style={{ padding: 8, textAlign: "center" }}>
+                    {posthoc ? <button onClick={() => togglePosthoc(node)} style={{ cursor: "pointer" }}>{expandedNodes[node] ? "Hide" : "Show"}</button> : "-"}
+                  </td>
+                </tr>
+                {expandedNodes[node] && posthoc && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: 8, background: "#f0f0f0", fontSize: 12, fontFamily: "monospace" }}>
+                      <pre style={{ margin: 0 }}>{typeof posthoc === "string" ? posthoc : JSON.stringify(posthoc, null, 2)}</pre>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -37,12 +96,26 @@ function StatsDashboard({ stats }) {
   );
 }
 
+// ---------------- Home / Main Component ----------------
 export default function Home() {
   const [files, setFiles] = useState([]);
   const [dfg, setDfg] = useState(null);
   const [selectedLogs, setSelectedLogs] = useState([]);
+  const [selectedVariants, setSelectedVariants] = useState(new Set());
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [nodeSize, setNodeSize] = useState(22);
+  const [nodeSizeInput, setNodeSizeInput] = useState("22");
+  const [edgeWidth, setEdgeWidth] = useState(2);
+  const [edgeWidthInput, setEdgeWidthInput] = useState("2");
+  const [significance, setSignificance] = useState(0.05);
+  const [significanceInput, setSignificanceInput] = useState("0.05");
+  const [nodeColor, setNodeColor] = useState("#55efc4");
+  const [highlightColor, setHighlightColor] = useState("#ff3b30");
+
   const containerRefs = useRef({});
   const networkInstances = useRef({});
+  const nodePositions = useRef({}); // store global node positions
 
   const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
@@ -58,51 +131,86 @@ export default function Home() {
       const data = await res.json();
       setDfg(data);
       setSelectedLogs(data.log_names);
+      setSelectedVariants(new Set());
     } catch (err) {
       console.error(err);
       alert("Failed to fetch DFGs");
     }
   };
 
-  const toggleLog = logName => {
-    setSelectedLogs(prev =>
-      prev.includes(logName)
-        ? prev.filter(l => l !== logName)
-        : [...prev, logName]
-    );
+  const toggleLog = logName => setSelectedLogs(prev => prev.includes(logName) ? prev.filter(l => l !== logName) : [...prev, logName]);
+
+  const toggleVariant = async (key) => {
+    const nextSet = new Set(selectedVariants);
+    nextSet.has(key) ? nextSet.delete(key) : nextSet.add(key);
+    setSelectedVariants(nextSet);
+
+    if (!files.length) return;
+
+    const formData = new FormData();
+    files.forEach(f => formData.append("files", f));
+    if (nextSet.size) formData.append("selected_variants_raw", Array.from(nextSet).join(","));
+
+    try {
+      const res = await fetch("http://localhost:8000/dfg_multi", { method: "POST", body: formData });
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+      if (data) setDfg(data);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to fetch DFGs");
+    }
   };
 
-  // Keep getColor for merged DFG
-  const getNodeColor = (stat) => {
-    if (!stat) return "#55efc4";
+  // ---------------- Node color logic ----------------
+  const getNodeColor = (stat, isMerged = false) => {
+    if (!isMerged || !stat) return nodeColor;
     const { p_value, effect_size } = stat;
-    if (p_value < 0.05 && effect_size > 0.15) return "#ff3b30";
-    if (p_value < 0.05 && effect_size <= 0.15) return "#ff9500";
-    if (p_value >= 0.05 && effect_size > 0.05) return "#ffd700";
-    return "#55efc4";
+    if (p_value >= significance) return nodeColor; // green
+    if (effect_size <= 0.15) return "#f6e58d";    // yellow
+    if (effect_size <= 0.5) return "#ffbe76";     // orange
+    return highlightColor;                         // red
   };
 
   const renderDFG = (nodes, edges, ref, logName) => {
     if (!ref.current) return;
-    if (networkInstances.current[logName]) {
-      networkInstances.current[logName].destroy();
-      networkInstances.current[logName] = null;
-    }
+    if (networkInstances.current[logName]) networkInstances.current[logName].destroy();
     ref.current.innerHTML = "";
 
-    networkInstances.current[logName] = new Network(ref.current, { nodes, edges }, {
-      physics: { stabilization: true },
+    // Fix positions if already computed
+    nodes.forEach(n => {
+      if (nodePositions.current[n.id]) {
+        n.x = nodePositions.current[n.id].x;
+        n.y = nodePositions.current[n.id].y;
+        n.fixed = { x: true, y: true };
+      }
+    });
+
+    const physicsEnabled = Object.keys(nodePositions.current).length === 0;
+
+    const network = new Network(ref.current, { nodes, edges }, {
+      physics: { enabled: physicsEnabled, barnesHut: { springLength: 250, centralGravity: 0.3, avoidOverlap: 1.2 } },
       edges: { smooth: true },
       nodes: { shape: "dot" },
-      layout: { improvedLayout: true },
+      layout: { improvedLayout: false },
       interaction: { hover: true }
     });
+
+    networkInstances.current[logName] = network;
+
+    // Save positions after first stabilization
+    if (physicsEnabled) {
+      network.once("stabilizationIterationsDone", () => {
+        nodes.forEach(n => {
+          nodePositions.current[n.id] = network.getPositions([n.id])[n.id];
+        });
+      });
+    }
   };
 
   useEffect(() => {
     if (!dfg) return;
 
-    // Individual logs (always green)
     selectedLogs.forEach(name => {
       const idx = dfg.log_names.indexOf(name);
       if (!containerRefs.current[name]) containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
@@ -110,28 +218,34 @@ export default function Home() {
       const nodes = new DataSet(dfg.nodes.map(n => ({
         id: n,
         label: n,
-        color: "#55efc4", // always green for individual
-        size: 22,
+        color: nodeColor,
+        size: nodeSize,
         font: { color: "#111", size: 18 }
       })));
 
       const edges = new DataSet(dfg.dfgs[idx].map(({ from, to, freq }) => ({
-        from, to, label: freq.toString(), width: Math.min(4, 1 + Math.log10(freq + 1)), // smoother width scaling
-        font: { size: 20, color: "#111", strokeWidth: 2 }, arrows: { to: { enabled: true, scaleFactor: 0.5 } } // smaller, balanced arrows
+        from, to,
+        label: freq.toString(),
+        width: Math.min(edgeWidth, 1 + Math.log10(freq + 1)),
+        font: { size: 20, color: "#111", strokeWidth: 2 },
+        arrows: { to: { enabled: true, scaleFactor: 0.5 } }
       })));
 
       renderDFG(nodes, edges, containerRefs.current[name], name);
     });
 
-    // Merged DFG (use getColor)
     if (selectedLogs.length > 1) {
-      const mergedNodes = new DataSet(dfg.nodes.map(n => ({
-        id: n,
-        label: n,
-        color: getNodeColor(dfg.stats[n]),
-        size: 22,
-        font: { color: "#111", size: 18 }
-      })));
+      if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
+
+      const mergedNodes = new DataSet(
+        dfg.nodes.map(n => ({
+          id: n,
+          label: n,
+          color: getNodeColor(dfg.stats[n], true),
+          size: nodeSize,
+          font: { color: "#111", size: 18 }
+        }))
+      );
 
       const mergedEdgesMap = {};
       dfg.dfgs.forEach((logDfg, idx) => {
@@ -145,51 +259,190 @@ export default function Home() {
 
       const mergedEdges = new DataSet(Object.entries(mergedEdgesMap).map(([k, freq]) => {
         const [from, to] = k.split("->");
-        return { from, to, label: freq.toString(), width: Math.min(4, 1 + Math.log10(freq + 1)),  font: { size: 20, color: "#111", strokeWidth: 2 }, arrows: { to: { enabled: true, scaleFactor: 0.5 } } }; 
+        return {
+          from, to,
+          label: freq.toString(),
+          width: Math.min(edgeWidth, 1 + Math.log10(freq + 1)),
+          font: { size: 20, color: "#111", strokeWidth: 2 },
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } }
+        };
       }));
 
-      if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
       renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
-    } else {
-      if (networkInstances.current["merged"]) {
-        networkInstances.current["merged"].destroy();
-        networkInstances.current["merged"] = null;
-      }
     }
-  }, [dfg, selectedLogs]);
+  }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor]);
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif" }}>
-      <div style={{ width: "240px", padding: "30px 20px", borderRight: "1px solid rgba(255,255,255,0.3)", backdropFilter: "blur(12px)", background: "rgba(255,255,255,0.15)", borderRadius: "0 20px 20px 0", boxShadow: "2px 2px 12px rgba(0,0,0,0.05)" }}>
-        <h3 style={{ marginBottom: "20px", color: "#111", fontWeight: 600 }}>Select Logs</h3>
-        <input type="file" multiple accept=".csv" onChange={handleFileChange} style={{ marginBottom: "15px", padding: "8px 10px", borderRadius: "12px", border: "1px solid rgba(200,200,200,0.6)", background: "rgba(255,255,255,0.8)", width: "100%" }} />
-        {files.map(f => (
-          <label key={f.name} style={{ display: "block", marginBottom: "12px", cursor: "pointer", userSelect: "none", fontWeight: 500 }}>
-            <input type="checkbox" checked={selectedLogs.includes(f.name)} onChange={() => toggleLog(f.name)} style={{ marginRight: "10px" }} />
-            {f.name}
-          </label>
-        ))}
-      </div>
+    <div style={{ minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif", background: "#f3f3f7" }}>
+      {!files.length ? (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: "100vh", gap: 20, color: "#333" }}
+        >
+          <motion.h1 initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ duration: 0.6 }} style={{ fontWeight: 700, fontSize: 28 }}>
+            Multi-Log DFG Dashboard
+          </motion.h1>
+          <motion.input type="file" multiple accept=".csv" onChange={handleFileChange}
+            style={{ padding: 14, borderRadius: 14, border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontWeight: 600, boxShadow: "0 8px 20px rgba(0,0,0,0.08)" }}
+            whileHover={{ scale: 1.02 }}
+          />
+        </motion.div>
+      ) : (
+        <div style={{ display: "flex", minHeight: "100vh" }}>
+          <motion.div initial={{ x: -300 }} animate={{ x: 0 }} transition={{ duration: 0.5 }}
+            style={{ width: 300, padding: 20, background: "#fff", borderRadius: "0 20px 20px 0", boxShadow: "4px 0 30px rgba(0,0,0,0.05)", overflowY: "auto" }}
+          >
+            <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>Logs</h3>
+            {files.map(f => (
+              <label key={f.name} style={{ display: "block", marginBottom: 10, cursor: "pointer" }}>
+                <input type="checkbox" checked={selectedLogs.includes(f.name)} onChange={() => toggleLog(f.name)} style={{ marginRight: 8 }} />
+                {f.name}
+              </label>
+            ))}
+            <VariantBarCharts variants={dfg?.variants} logNames={selectedLogs} />
+          </motion.div>
 
-      <div style={{ flex: 1, padding: "50px 30px", overflowY: "auto" }}>
-        <h1 style={{ fontWeight: "700", fontSize: "2.3rem", marginBottom: "20px", color: "#111" }}>Multi-Log DFG Dashboard</h1>
+          <div style={{ flex: 1, padding: 30, overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h1 style={{ fontWeight: 700, fontSize: 22 }}>Dashboard</h1>
+              <button onClick={() => setSettingsOpen(true)} style={{ padding: "8px 14px", borderRadius: 12, background: "#4e79a7", color: "#fff", fontWeight: 600 }}>Settings</button>
+            </div>
 
-        {selectedLogs.length > 1 && (
-          <div style={{ marginBottom: "30px" }}>
-            <h2 style={{ fontWeight: "600" }}>Merged DFG</h2>
-            <div id="mergedDFG" style={{ height: "500px", borderRadius: "16px", background: "rgba(255,255,255,0.8)", marginBottom: "30px" }} />
+            {selectedLogs.length > 1 && (
+              <div style={{ marginBottom: 30 }}>
+                <h2 style={{ fontWeight: 700, fontSize: 16 }}>Merged DFG</h2>
+                <div id="mergedDFG" style={{ height: 500, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)", marginBottom: 30 }} />
+              </div>
+            )}
+
+            {selectedLogs.map(name => (
+              <div key={name} style={{ marginBottom: 30 }}>
+                <h2 style={{ fontWeight: 700, fontSize: 16 }}>{name} DFG</h2>
+                <div id={`dfg_${name}`} style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
+              </div>
+            ))}
+
+            {dfg && <StatsDashboard stats={dfg.stats} />}
           </div>
+        </div>
+      )}
+      
+            {/* Settings Overlay */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              background: "rgba(0,0,0,0.3)",
+              zIndex: 50,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              padding: 20,
+              overflowY: "auto"
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              transition={{ duration: 0.3 }}
+              style={{
+                width: "480px",
+                maxHeight: "90vh",
+                padding: 40,
+                borderRadius: 20,
+                background: "#fff",
+                boxShadow: "0 16px 48px rgba(0,0,0,0.15)",
+                overflowY: "auto",
+                position: "relative"
+              }}
+            >
+              <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 20 }}>Settings</h2>
+              <button onClick={() => setSettingsOpen(false)} style={{ position: "absolute", top: 20, right: 20, background: "none", border: "none", fontSize: 20, cursor: "pointer" }}>✕</button>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Inputs with temporary string states */}
+                <label>Significance Threshold
+                  <input
+                    type="text"
+                    value={significanceInput}
+                    onChange={e => setSignificanceInput(e.target.value)}
+                    onBlur={() => {
+                      let val = parseFloat(significanceInput);
+                      if (isNaN(val)) val = 0.05;
+                      val = Math.min(Math.max(val, 0), 1);
+                      setSignificance(val);
+                      setSignificanceInput(val.toString());
+                    }}
+                    style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+                  />
+                </label>
+
+                <label>Node Size
+                  <input
+                    type="text"
+                    value={nodeSizeInput}
+                    onChange={e => setNodeSizeInput(e.target.value)}
+                    onBlur={() => {
+                      let val = parseInt(nodeSizeInput);
+                      if (isNaN(val)) val = 22;
+                      val = Math.min(Math.max(val, 5), 50);
+                      setNodeSize(val);
+                      setNodeSizeInput(val.toString());
+                    }}
+                    style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+                  />
+                </label>
+
+                <label>Edge Width
+                  <input
+                    type="text"
+                    value={edgeWidthInput}
+                    onChange={e => setEdgeWidthInput(e.target.value)}
+                    onBlur={() => {
+                      let val = parseInt(edgeWidthInput);
+                      if (isNaN(val)) val = 2;
+                      val = Math.min(Math.max(val, 1), 10);
+                      setEdgeWidth(val);
+                      setEdgeWidthInput(val.toString());
+                    }}
+                    style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+                  />
+                </label>
+
+                <label>Normal Node Color
+                  <input type="color" value={nodeColor} onChange={e => setNodeColor(e.target.value)} style={{ width: "100%" }} />
+                </label>
+
+                <label>Highlight Node Color
+                  <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: "100%" }} />
+                </label>
+
+                <h3 style={{ marginTop: 20, fontWeight: 700, fontSize: 16 }}>Variants</h3>
+                {dfg?.variants?.length > 0 && dfg.variants.map(v => (
+                  <label key={v.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span>
+                      <input type="checkbox" checked={selectedVariants.has(v.key)} onChange={() => toggleVariant(v.key)} style={{ marginRight: 8 }} />
+                      {v.sequence.join("→")}
+                    </span>
+                    <small style={{ fontFamily: "monospace" }}>{v.total}</small>
+                  </label>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
         )}
-
-        {selectedLogs.map(name => (
-          <div key={name} style={{ marginBottom: "30px" }}>
-            <h2 style={{ fontWeight: "600" }}>{name} DFG</h2>
-            <div id={`dfg_${name}`} style={{ height: "400px", borderRadius: "16px", background: "rgba(255,255,255,0.8)" }} />
-          </div>
-        ))}
-
-        {dfg && <StatsDashboard stats={dfg.stats} />}
-      </div>
+      </AnimatePresence>
     </div>
   );
 }

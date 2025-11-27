@@ -1,229 +1,241 @@
-'''wang:connect backend API and import libraries''' 
 import traceback
-from fastapi import FastAPI, UploadFile, File, HTTPException
+import math
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 from pm4py.objects.conversion.log import converter as log_converter
 from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from scipy.stats import shapiro, kruskal, f_oneway, ttest_ind
-import numpy as np
-import itertools
-import scikit_posthocs as sp  # pip install scikit-posthocs
-
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+import scikit_posthocs as sp
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
-'''Wang '''
 
-'''Wang: post-hoc effect size'''
-def effect_size_eta_squared(stat, n_total):
-    return stat / (n_total - 1) if n_total > 1 else None
-'''Wang'''
+# ---------------- Helpers Dimo1----------------
+def eta_squared_anova(stat, df_between, df_total):
+    return stat * df_between / (stat * df_between + df_total) if df_total > 0 else None
 
-'''wang + dimo'''
+def epsilon_squared_kruskal(H, n_total, k):
+    return (H - k + 1) / (n_total - k) if n_total > k else None
+
+def safe_float(x):
+    if x is None or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
+        return None
+    return round(x, 5) if isinstance(x, float) else x
+
+# ---------------- POST ----------------
 @app.post("/dfg_multi")
-async def dfg_multi(files: list[UploadFile] = File(...)):
+async def dfg_multi(
+    files: list[UploadFile] = File(...),
+    selected_variants_raw: str = Form(default=None)
+):
     try:
-        '''Wang '''
         if not files:
             raise HTTPException(status_code=400, detail="No files uploaded")
 
-        logs, names = [], []
+        logs, names, dfs = [], [], []
+
+        # Dimo2
         for file in files:
             df = pd.read_csv(file.file)
-            col_map = {
-                "case": "case:concept:name",
-                "activity": "concept:name",
-                "timestamp": "time:timestamp",
-            }
-            df.rename(columns=col_map, inplace=True)
+            df.rename(columns={"case": "case:concept:name",
+                               "activity": "concept:name",
+                               "timestamp": "time:timestamp"}, inplace=True)
+
             for col in ["case:concept:name", "concept:name", "time:timestamp"]:
                 if col not in df.columns:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Missing column {col} in {file.filename}",
-                    )
-            df["time:timestamp"] = pd.to_datetime(
-                df["time:timestamp"], errors="coerce"
-            )
+                    raise HTTPException(status_code=400, detail=f"Missing column {col} in {file.filename}")
+
+            df["time:timestamp"] = pd.to_datetime(df["time:timestamp"], errors="coerce")
             if df["time:timestamp"].isna().any():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid timestamps in {file.filename}",
-                )
-            logs.append(
-                log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG)
-            )
+                raise HTTPException(status_code=400, detail=f"Invalid timestamps in {file.filename}")
+
+            df = df.sort_values(["case:concept:name", "time:timestamp"]).reset_index(drop=True)
+            dfs.append(df.copy())
+            logs.append(log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG))
             names.append(file.filename)
-        '''Wang '''
-        
-        '''dimo: dfg generation for event logs'''
-        # Compute DFGs per log
+        #Dimo2
+
+
+        # Extract variants
+        all_variants, trace_keys_all = [], []
+        for df in dfs:
+            df['prev_act'] = df.groupby('case:concept:name')['concept:name'].shift(1).fillna('start')
+            for seq in df.groupby('case:concept:name')['concept:name'].agg(list):
+                seq_tuple = tuple(seq)
+                trace_keys_all.append(seq_tuple)
+                if seq_tuple not in [v["sequence"] for v in all_variants]:
+                    all_variants.append({"sequence": seq_tuple, "key": "|".join(seq_tuple)})
+
+        # Filter variants if needed
+        if selected_variants_raw:
+            selected_keys = selected_variants_raw.split(",")
+            filtered_logs = []
+            for log in logs:
+                f_log = []
+                for trace in log:
+                    seq_key = "|".join(event["concept:name"] for event in trace)
+                    if seq_key in selected_keys:
+                        f_log.append(trace)
+                filtered_logs.append(f_log)
+            logs = filtered_logs
+
+        # Discover DFGs
         dfgs = []
         for log in logs:
             try:
-                dfg_result = dfg_discovery.apply(log)
-                dfgs.append(dfg_result[0] if isinstance(dfg_result, tuple) else dfg_result)
+                result = dfg_discovery.apply(log)
+                dfgs.append(result[0] if isinstance(result, tuple) else result)
             except:
                 dfgs.append({})
 
-        # Collect all nodes
-        nodes_set = set()
+        # Collect nodes
+        nodes = set()
         for d in dfgs:
-            for (s, t) in d.keys():
-                nodes_set.update([s, t])
-        nodes = list(nodes_set)
+            for s, t in d.keys():
+                nodes.add(s)
+                nodes.add(t)
+        nodes = list(nodes)
 
-        # Build per-node counts per log
+        # Node frequency per log
         freq_dict = {}
         for node in nodes:
-            per_log_counts = []
-            for log in logs:
-                counts = [sum(1 for event in trace if event["concept:name"] == node) for trace in log]
-                per_log_counts.append(counts)
-            freq_dict[node] = per_log_counts
-        '''dimo: dfg generation for event logs'''
-        
-        
-        '''Wang'''
-        # Statistical tests per node
-        stats_result = {}
-        for node, counts_per_log in freq_dict.items():
-            valid_lists = [lst for lst in counts_per_log if len(lst) > 0 and len(set(lst)) > 1]
-            if len(valid_lists) < 2:
-                stats_result[node] = {
-                    "stat": None,
-                    "p_value": 1,
-                    "effect_size": None,
-                    "test": None,
-                    "posthoc": None,
-                }
+            per_log_lists = []
+            for df in dfs:
+                counts = df.groupby('case:concept:name')['concept:name'].apply(lambda x: (x == node).sum()).tolist()
+                per_log_lists.append(counts)
+            freq_dict[node] = per_log_lists
+
+        # Statistical Tests
+        stats_result, posthoc_json = {}, {}
+        alpha, min_total_count = 0.05, 3
+
+        for node, lists_per_log in freq_dict.items():
+            valid = [lst for lst in lists_per_log if len(lst) > 0]
+            k = len(valid)
+            if k < 2:
+                stats_result[node] = {"stat": None, "p_value": 1, "effect_size": None, "test": None, "posthoc": None}
                 continue
 
-            # Normality check
-            normal = all(len(lst) > 3 and shapiro(lst)[1] > 0.05 for lst in valid_lists)
+            n_total = sum(len(lst) for lst in valid)
+            all_vals = [v for lst in valid for v in lst]
+            normal = len(all_vals) >= 8 and shapiro(all_vals)[1] > 0.05
 
-            # Select test
-            if len(valid_lists) == 2:
+            if k == 2:
                 if normal:
-                    stat, p = ttest_ind(*valid_lists, equal_var=False)
-                    test_name = "t-test (independent)"
+                    stat, p = ttest_ind(*valid, equal_var=False)
+                    effect_size = eta_squared_anova(stat, 1, n_total - 2)
+                    test_name = "t-test"
+                    posthoc_res = None
                 else:
-                    stat, p = kruskal(*valid_lists)
+                    stat, p = kruskal(*valid)
+                    effect_size = epsilon_squared_kruskal(stat, n_total, k)
                     test_name = "Kruskal-Wallis"
+                    try:
+                        posthoc_res = sp.posthoc_dunn(valid, p_adjust='bonferroni').to_dict()
+                    except:
+                        posthoc_res = None
             else:
                 if normal:
-                    stat, p = f_oneway(*valid_lists)
-                    test_name = "One-way ANOVA"
+                    stat, p = f_oneway(*valid)
+                    effect_size = eta_squared_anova(stat, k - 1, n_total - k)
+                    test_name = "ANOVA"
+                    try:
+                        all_vals_flat, group_labels = [], []
+                        for idx, lst in enumerate(valid):
+                            all_vals_flat.extend(lst)
+                            group_labels.extend([idx]*len(lst))
+                        tukey = pairwise_tukeyhsd(endog=all_vals_flat, groups=group_labels, alpha=0.05)
+                        posthoc_res = tukey.summary().as_text()
+                    except:
+                        posthoc_res = None
                 else:
-                    stat, p = kruskal(*valid_lists)
+                    stat, p = kruskal(*valid)
+                    effect_size = epsilon_squared_kruskal(stat, n_total, k)
                     test_name = "Kruskal-Wallis"
-
-            n_total = sum(len(lst) for lst in valid_lists)
-            eta2 = effect_size_eta_squared(stat, n_total)
-
-            # Post-hoc
-            posthoc_res = None
-            try:
-                if len(valid_lists) > 2:
-                    combined = pd.DataFrame({
-                        "value": list(itertools.chain(*valid_lists)),
-                        "group": sum([[i] * len(lst) for i, lst in enumerate(valid_lists)], []),
-                    })
-                    if normal:
-                        import statsmodels.api as sm
-                        from statsmodels.stats.multicomp import pairwise_tukeyhsd
-
-                        tukey = pairwise_tukeyhsd(combined["value"], combined["group"])
-                        posthoc_res = {}
-                        for row in tukey.summary().data[1:]:
-                            g1, g2, meandiff, pval, lower, upper, reject = row
-                            posthoc_res[f"{g1}-{g2}"] = pval
-                    else:
-                        dunn = sp.posthoc_dunn(
-                            [lst for lst in valid_lists], p_adjust="bonferroni"
-                        )
-                        posthoc_res = dunn.to_dict()
-            except:
-                posthoc_res = None
+                    try:
+                        posthoc_res = sp.posthoc_dunn(valid, p_adjust='bonferroni').to_dict()
+                    except:
+                        posthoc_res = None
 
             stats_result[node] = {
-                "stat": stat,
-                "p_value": p,
-                "effect_size": eta2,
+                "stat": safe_float(stat),
+                "p_value": safe_float(p),
+                "effect_size": safe_float(effect_size),
                 "test": test_name,
-                "posthoc": posthoc_res,
+                "posthoc": posthoc_res
             }
-        '''Wang'''
-        
-        '''Dimo + Wang: merged DFG using statistical test data'''
-        # Merge all DFGs (sum frequencies of same edge over all logs)
+
+            # Beautify posthoc JSON per log
+            if isinstance(posthoc_res, dict):
+                ph_json = {}
+                for i, lst_i in enumerate(valid):
+                    log_i = f"Log {i+1}"
+                    ph_json[log_i] = {}
+                    for j, lst_j in enumerate(valid):
+                        log_j = f"Log {j+1}"
+                        if i == j:
+                            ph_json[log_i][log_j] = {"value": 1, "posthoc": "-"}
+                        else:
+                            ph_val = safe_float(posthoc_res.get(j, {}).get(i, None))
+                            ph_json[log_i][log_j] = {"value": ph_val, "posthoc": "Dunn"}
+                posthoc_json[node] = ph_json
+            else:
+                posthoc_json[node] = posthoc_res
+
+        # Merge DFGs
         merged_dfg = {}
         for d in dfgs:
             for edge, freq in d.items():
                 merged_dfg[edge] = merged_dfg.get(edge, 0) + freq
 
-        # Use statistical test data (p-values) to determine significant nodes
-        alpha = 0.05  # significance level
-        significant_nodes = {
-            node
-            for node, res in stats_result.items()
-            if res.get("p_value") is not None and res.get("p_value") < alpha
+        sig_nodes = {
+            n for n, r in stats_result.items()
+            if r["p_value"] < alpha and sum(df['concept:name'].eq(n).sum() for df in dfs) >= min_total_count
         }
+        merged_dfg_significant = {e: f for e, f in merged_dfg.items() if e[0] in sig_nodes or e[1] in sig_nodes}
 
-        # Keep a merged DFG only for edges touching significant nodes
-        merged_dfg_significant = {
-            edge: freq
-            for edge, freq in merged_dfg.items()
-            if edge[0] in significant_nodes or edge[1] in significant_nodes
-        }
-        '''Dimo + Wang'''
-            
-        #dimo
-        # Convert DFGs to JSON
+        # Convert DFGs to JSON DIMO3 
         dfgs_json = []
         for d in dfgs:
-            dfg_list = [
-                {"from": s, "to": t, "freq": freq} for (s, t), freq in d.items()
-            ]
-            dfgs_json.append(dfg_list)
+            edges = [{"from": s, "to": t, "freq": f} for (s, t), f in d.items()]
+            dfgs_json.append(edges)  # each log separately
 
-        # Convert merged DFGs to JSON
-        merged_dfg_json = [
-            {"from": s, "to": t, "freq": freq} for (s, t), freq in merged_dfg.items()
-        ]
-        merged_dfg_significant_json = [
-            {"from": s, "to": t, "freq": freq}
-            for (s, t), freq in merged_dfg_significant.items()
-        ]
+        merged_dfg_json = [{"from": s, "to": t, "freq": f} for (s, t), f in merged_dfg.items()]
+        merged_dfg_significant_json = [{"from": s, "to": t, "freq": f} for (s, t), f in merged_dfg_significant.items()]
+        # DIMO3 
+        
+        
+        # Variants counts
+        for v in all_variants:
+            seq = v["sequence"]
+            v["total"] = sum(1 for s in trace_keys_all if s == seq)
+            v["counts_per_log"] = [sum(1 for trace in log if tuple(e["concept:name"] for e in trace) == seq) for log in logs]
+            v["present"] = [c > 0 for c in v["counts_per_log"]]
 
         return {
             "nodes": nodes,
             "dfgs": dfgs_json,
             "stats": stats_result,
+            "posthoc_json": posthoc_json,
             "log_names": names,
             "merged_dfg": merged_dfg_json,
             "merged_dfg_significant": merged_dfg_significant_json,
             "alpha": alpha,
+            "variants": all_variants
         }
-        #dimo 
-       
-    #wang
-    except Exception as e:
-        print("Exception in /dfg_multi:", e)
-        print(traceback.format_exc())
-        raise HTTPException(
-            status_code=500, detail=f"Error processing logs: {e}"
-        )
-    #wang
 
+    except Exception as e:
+        print("Exception in /dfg_multi", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException
