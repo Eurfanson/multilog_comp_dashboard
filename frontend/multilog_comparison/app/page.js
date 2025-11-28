@@ -116,6 +116,15 @@ export default function Home() {
   const containerRefs = useRef({});
   const networkInstances = useRef({});
   const nodePositions = useRef({}); // store global node positions
+  const labeledEdge = useRef({}); // (kept for compatibility but unused)
+  const [edgeBubble, setEdgeBubble] = useState({ visible: false, edge: null, x: 0, y: 0, logName: null });
+  const edgeBubbleRef = useRef(edgeBubble);
+  const [nodeBubble, setNodeBubble] = useState({ visible: false, node: null, x: 0, y: 0, logName: null });
+  const nodeBubbleRef = useRef(nodeBubble);
+
+  // keep a ref in sync so vis event handlers can read latest bubble state
+  useEffect(() => { edgeBubbleRef.current = edgeBubble; }, [edgeBubble]);
+  useEffect(() => { nodeBubbleRef.current = nodeBubble; }, [nodeBubble]);
 
   const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
@@ -197,6 +206,95 @@ export default function Home() {
     });
 
     networkInstances.current[logName] = network;
+    // Simplified helper: always use straight midpoint between source and target nodes
+    function getEdgeCanvasMidpoint(edgeId) {
+      try {
+        const e = network.body && network.body.data && network.body.data.edges && network.body.data.edges.get(edgeId);
+        if (!e) return null;
+        const pos = network.getPositions([e.from, e.to]);
+        const pFrom = pos && pos[e.from];
+        const pTo = pos && pos[e.to];
+        if (pFrom && pTo) {
+          return { x: (pFrom.x + pTo.x) / 2, y: (pFrom.y + pTo.y) / 2 };
+        }
+      } catch (err) {
+        // ignore
+      }
+      return null;
+    }
+
+    // Show a small context bubble under the clicked edge (hide otherwise)
+    network.on("click", params => {
+      try {
+        // If user clicked a node on merged DFG, show node info bubble
+        const clickedNodes = params.nodes || [];
+        if (clickedNodes.length > 0 && logName === "merged") {
+          const nodeId = clickedNodes[0];
+          // get stats row for this node from the dfg state
+          const statsRow = dfg && dfg.stats && dfg.stats[nodeId];
+
+          // compute node canvas position and convert to page coords
+          const positions = network.getPositions([nodeId]);
+          const p = positions && positions[nodeId];
+          let bubbleX = 0, bubbleY = 0;
+          if (p) {
+            const midDOM = network.canvasToDOM(p);
+            const canvasElem = ref.current.querySelector && ref.current.querySelector('canvas');
+            const canvasRect = canvasElem ? canvasElem.getBoundingClientRect() : ref.current.getBoundingClientRect();
+            bubbleX = canvasRect.left + midDOM.x;
+            bubbleY = canvasRect.top + midDOM.y + 10;
+          } else {
+            const { x = 0, y = 0 } = (params.pointer && params.pointer.DOM) || {};
+            bubbleX = x; bubbleY = y;
+          }
+
+          setNodeBubble({ visible: true, node: nodeId, stats: statsRow, x: bubbleX, y: bubbleY, logName });
+          // hide edge bubble when node selected
+          setEdgeBubble({ visible: false, edge: null, x: 0, y: 0, logName: null });
+          return;
+        }
+
+        // Otherwise handle edge clicks (existing behavior)
+        const clickedEdges = params.edges || [];
+        if (clickedEdges.length > 0) {
+          const edgeId = clickedEdges[0];
+          const edgeObj = edges.get(edgeId);
+          if (!edgeObj) return;
+
+          // compute straight midpoint between nodes
+          let midCanvas = getEdgeCanvasMidpoint(edgeId);
+          if (!midCanvas) {
+            const fromId = edgeObj.from;
+            const toId = edgeObj.to;
+            const positions = network.getPositions([fromId, toId]);
+            const pFrom = positions[fromId];
+            const pTo = positions[toId];
+            if (!pFrom || !pTo) {
+              const { x = 0, y = 0 } = (params.pointer && params.pointer.DOM) || {};
+              setEdgeBubble({ visible: true, edge: edgeObj, x, y, logName });
+              return;
+            }
+            midCanvas = { x: (pFrom.x + pTo.x) / 2, y: (pFrom.y + pTo.y) / 2 };
+          }
+
+          const midDOM = network.canvasToDOM(midCanvas);
+          const canvasElem = ref.current.querySelector && ref.current.querySelector('canvas');
+          const canvasRect = canvasElem ? canvasElem.getBoundingClientRect() : ref.current.getBoundingClientRect();
+          const bubbleX = canvasRect.left + midDOM.x;
+          const bubbleY = canvasRect.top + midDOM.y + 10;
+
+          setEdgeBubble({ visible: true, edge: edgeObj, edgeId, x: bubbleX, y: bubbleY, logName });
+          // hide node bubble when edge selected
+          setNodeBubble({ visible: false, node: null, x: 0, y: 0, logName: null });
+        } else {
+          // clicked outside an edge/node -> hide both bubbles
+          setEdgeBubble({ visible: false, edge: null, x: 0, y: 0, logName: null });
+          setNodeBubble({ visible: false, node: null, x: 0, y: 0, logName: null });
+        }
+      } catch (err) {
+        console.error("Error showing bubble:", err);
+      }
+    });
 
     // Save positions after first stabilization
     if (physicsEnabled) {
@@ -206,6 +304,66 @@ export default function Home() {
         });
       });
     }
+    // (curve-midpoint helper is defined earlier as `function getEdgeCanvasMidpoint`) — use that implementation
+
+    // Reposition bubble when network view changes (drag, zoom, stabilization)
+    const repositionBubble = (edgeIdToPos) => {
+      const cur = edgeBubbleRef.current;
+      if (!cur || !cur.visible || cur.logName !== logName) return;
+      const eid = edgeIdToPos || cur.edgeId;
+      if (!eid) return;
+      try {
+        const edgeObjNow = network.body.data.edges.get(eid);
+        if (!edgeObjNow) return;
+        // compute midpoint using curve-aware helper with fallback
+        let midCanvas = getEdgeCanvasMidpoint(eid);
+        if (!midCanvas) {
+          const fromId = edgeObjNow.from;
+          const toId = edgeObjNow.to;
+          const positions = network.getPositions([fromId, toId]);
+          const pFrom = positions[fromId];
+          const pTo = positions[toId];
+          if (!pFrom || !pTo) return;
+          midCanvas = { x: (pFrom.x + pTo.x) / 2, y: (pFrom.y + pTo.y) / 2 };
+        }
+        const midDOM = network.canvasToDOM(midCanvas);
+        const canvasElem = ref.current.querySelector && ref.current.querySelector('canvas');
+        const canvasRect = canvasElem ? canvasElem.getBoundingClientRect() : ref.current.getBoundingClientRect();
+        const bubbleX = canvasRect.left + midDOM.x;
+        const bubbleY = canvasRect.top + midDOM.y + 10;
+        setEdgeBubble(prev => ({ ...prev, x: bubbleX, y: bubbleY, edge: edgeObjNow }));
+      } catch (err) {
+        // ignore reposition errors
+      }
+    };
+
+    // Reposition node bubble when network view changes (only relevant for merged DFG)
+    const repositionNodeBubble = () => {
+      const cur = nodeBubbleRef.current;
+      if (!cur || !cur.visible || cur.logName !== logName) return;
+      const nodeId = cur.node;
+      if (!nodeId) return;
+      try {
+        const positions = network.getPositions([nodeId]);
+        const p = positions && positions[nodeId];
+        if (!p) return;
+        const midDOM = network.canvasToDOM(p);
+        const canvasElem = ref.current.querySelector && ref.current.querySelector('canvas');
+        const canvasRect = canvasElem ? canvasElem.getBoundingClientRect() : ref.current.getBoundingClientRect();
+        const bubbleX = canvasRect.left + midDOM.x;
+        const bubbleY = canvasRect.top + midDOM.y + 10;
+        setNodeBubble(prev => ({ ...prev, x: bubbleX, y: bubbleY }));
+      } catch (err) {
+        // ignore
+      }
+    };
+
+    network.on("dragEnd", () => repositionBubble());
+    network.on("zoom", () => repositionBubble());
+    network.on("stabilizationIterationsDone", () => repositionBubble());
+    network.on("dragEnd", () => repositionNodeBubble());
+    network.on("zoom", () => repositionNodeBubble());
+    network.on("stabilizationIterationsDone", () => repositionNodeBubble());
   };
 
   useEffect(() => {
@@ -224,10 +382,11 @@ export default function Home() {
       })));
 
       const edges = new DataSet(dfg.dfgs[idx].map(({ from, to, freq }) => ({
-        from, to,
-        label: freq.toString(),
+        from,
+        to,
+        freq,
+        // label hidden by default; shown on click
         width: Math.min(edgeWidth, 1 + Math.log10(freq + 1)),
-        font: { size: 20, color: "#111", strokeWidth: 2 },
         arrows: { to: { enabled: true, scaleFactor: 0.5 } }
       })));
 
@@ -260,10 +419,11 @@ export default function Home() {
       const mergedEdges = new DataSet(Object.entries(mergedEdgesMap).map(([k, freq]) => {
         const [from, to] = k.split("->");
         return {
-          from, to,
-          label: freq.toString(),
+          from,
+          to,
+          freq,
+          // label hidden by default; shown on click
           width: Math.min(edgeWidth, 1 + Math.log10(freq + 1)),
-          font: { size: 20, color: "#111", strokeWidth: 2 },
           arrows: { to: { enabled: true, scaleFactor: 0.5 } }
         };
       }));
@@ -274,6 +434,50 @@ export default function Home() {
 
   return (
     <div style={{ minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif", background: "#f3f3f7" }}>
+      {/* Edge context bubble */}
+      {edgeBubble.visible && edgeBubble.edge && (
+        <div style={{ position: "fixed", left: edgeBubble.x, top: edgeBubble.y, zIndex: 60, transform: "translate(-50%, 0)" }}>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <div style={{ position: "absolute", left: "50%", top: -8, transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "7px solid transparent", borderRight: "7px solid transparent", borderBottom: "8px solid #efefef", zIndex: 61 }} />
+            <div style={{ minWidth: 80, maxWidth: 220, background: "#efefef", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.12)", padding: "6px 10px", fontSize: 13, textAlign: "center" }}>
+              <div style={{ color: "#333", fontWeight: 700 }}>{edgeBubble.edge.freq}</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Node context bubble (merged DFG only) */}
+      {nodeBubble.visible && nodeBubble.node && nodeBubble.logName === "merged" && (
+        <div style={{ position: "fixed", left: nodeBubble.x, top: nodeBubble.y, zIndex: 60, transform: "translate(-50%, 0)" }}>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <div style={{ position: "absolute", left: "50%", top: -8, transform: "translateX(-50%)", width: 0, height: 0, borderLeft: "7px solid transparent", borderRight: "7px solid transparent", borderBottom: "8px solid #efefef", zIndex: 61 }} />
+            <div style={{ minWidth: 200, maxWidth: 360, background: "#efefef", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.12)", padding: "8px 12px", fontSize: 13 }}>
+              <div style={{ fontWeight: 700, color: "#000", marginBottom: 6 }}>{nodeBubble.node}</div>
+                {nodeBubble.stats ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, auto)", gap: 8, alignItems: "center", fontSize: 12 }}>
+                    <div style={{ fontWeight: 700, color: "#000" }}>Test</div>
+                    <div style={{ fontWeight: 700, color: "#000" }}>Test Statistic</div>
+                    <div style={{ fontWeight: 700, color: "#000" }}>p-value</div>
+                    <div style={{ fontWeight: 700, color: "#000" }}>Effect Size</div>
+
+                    <div style={{ gridColumn: "1 / 2", color: "#000" }}>{nodeBubble.stats.test ?? "-"}</div>
+                    <div style={{ gridColumn: "2 / 3", color: "#000" }}>{typeof nodeBubble.stats.stat === "number" ? nodeBubble.stats.stat.toFixed(3) : "-"}</div>
+                    <div style={{ gridColumn: "3 / 4", color: (nodeBubble.stats.p_value ?? 1) < significance ? "#ff4d4d" : "#000", fontWeight: 700 }}>{typeof nodeBubble.stats.p_value === "number" ? nodeBubble.stats.p_value.toFixed(4) : "-"}</div>
+                    <div style={{ gridColumn: "4 / 5", color: "#000" }}>{typeof nodeBubble.stats.effect_size === "number" ? nodeBubble.stats.effect_size.toFixed(3) : "-"}</div>
+
+                    <div style={{ gridColumn: "1 / 5", marginTop: 8, fontSize: 12, color: "#111" }}>
+                      <div style={{ fontWeight: 700, marginBottom: 6 }}>Post-hoc</div>
+                      <div style={{ fontSize: 12, color: "#333", whiteSpace: "pre-wrap", maxHeight: 120, overflow: "auto" }}>
+                        {nodeBubble.stats.posthoc ? (typeof nodeBubble.stats.posthoc === "string" ? nodeBubble.stats.posthoc : JSON.stringify(nodeBubble.stats.posthoc, null, 2)) : "-"}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: "#666", fontSize: 12 }}>No stats available</div>
+                )}
+            </div>
+          </div>
+        </div>
+      )}
       {!files.length ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
