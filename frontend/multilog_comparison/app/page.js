@@ -6,37 +6,54 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { motion, AnimatePresence } from "framer-motion";
 
 // ---------------- Variant Bar Charts ----------------
-function VariantBarCharts({ variants, logNames }) {
+function VariantBarCharts({ variants, logNames, selectedVariants, onToggleVariant }) {
   if (!variants?.length || !logNames?.length) return null;
 
   return (
-    <div style={{ marginTop: 20, maxHeight: "800px", overflowY: "auto", paddingRight: 8 }}>
-      <h3 style={{ fontWeight: 700, marginBottom: 12, fontSize: 14, color: "#333" }}>Variant Frequencies</h3>
+    <div style={{ marginTop: 12, maxHeight: "780px", overflowY: "auto", paddingRight: 8 }}>
+      <h3 style={{ fontWeight: 700, marginBottom: 10, fontSize: 13, color: "#333" }}>Variant Selection</h3>
       {variants.map(v => {
-        const data = logNames.map((_, idx) => ({
-          logIndex: (idx + 1).toString(),
-          count: v.counts_per_log?.[idx] || 0
-        }));
+        const data = logNames.map((_, idx) => ({ logIndex: (idx + 1).toString(), count: v.counts_per_log?.[idx] || 0 }));
+        const maxCount = Math.max(0, ...data.map(d => d.count));
+        // ticks: at least 0..3; if max > 3 create 4 ticks spaced by thirds
+        let yTicks;
+        if (maxCount <= 3) {
+          yTicks = [0, 1, 2, 3];
+        } else {
+          const step = Math.ceil(maxCount / 3);
+          yTicks = [0, step, step * 2, Math.max(maxCount, step * 3)];
+        }
+
         return (
           <div key={v.key} style={{
-            marginBottom: 20,
-            padding: 14,
-            borderRadius: 14,
-            background: "#fff",
-            boxShadow: "0 8px 20px rgba(0,0,0,0.08)"
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '14px 12px',
+            height: 120,
+            marginBottom: 12,
+            borderRadius: 12,
+            background: '#fff',
+            boxShadow: '0 6px 18px rgba(0,0,0,0.06)'
           }}>
-            <h4 style={{ marginBottom: 6, fontWeight: 600, fontSize: 12, color: "#111" }}>
-              {v.sequence.join("→")}
-            </h4>
-            <ResponsiveContainer width="100%" height={120}>
-              <BarChart layout="vertical" data={data} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="logIndex" tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#4e79a7" radius={[4, 4, 0, 0]} barSize={16} />
-              </BarChart>
-            </ResponsiveContainer>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer' }}>
+              <input type="checkbox" style={{ alignSelf: 'center' }} checked={selectedVariants?.has(v.key)} onChange={() => onToggleVariant && onToggleVariant(v.key)} />
+              <div style={{ fontWeight: 600, fontSize: 13, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center' }}>{v.sequence.join(' → ')}</div>
+            </label>
+
+            <div style={{ width: 180, height: '100%', display: 'flex', alignItems: 'stretch', justifyContent: 'stretch' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data} margin={{ top: 2, right: 4, left: 4, bottom: 4 }}>
+                  <CartesianGrid horizontal={true} vertical={false} strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="logIndex" height={18} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} ticks={yTicks} domain={[0, Math.max(3, maxCount)]} width={30} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#4e79a7" radius={[6, 6, 6, 6]} barCategoryGap="10%" maxBarSize={80} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* total removed per request */}
           </div>
         );
       })}
@@ -103,6 +120,7 @@ export default function Home() {
   const [selectedLogs, setSelectedLogs] = useState([]);
   const [selectedVariants, setSelectedVariants] = useState(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [nodeSize, setNodeSize] = useState(22);
   const [nodeSizeInput, setNodeSizeInput] = useState("22");
@@ -495,23 +513,61 @@ export default function Home() {
         </motion.div>
       ) : (
         <div style={{ display: "flex", minHeight: "100vh" }}>
-          <motion.div initial={{ x: -300 }} animate={{ x: 0 }} transition={{ duration: 0.5 }}
-            style={{ width: 300, padding: 20, background: "#fff", borderRadius: "0 20px 20px 0", boxShadow: "4px 0 30px rgba(0,0,0,0.05)", overflowY: "auto" }}
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: sidebarOpen ? '50vw' : 0, padding: sidebarOpen ? 20 : 0, opacity: sidebarOpen ? 1 : 0 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 30 }}
+            style={{ position: 'fixed', left: 0, top: 0, height: '100vh', background: '#fff', borderRadius: '0 20px 20px 0', boxShadow: sidebarOpen ? '4px 0 30px rgba(0,0,0,0.05)' : 'none', overflow: 'hidden', zIndex: 1000 }}
           >
-            <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>Logs</h3>
-            {files.map(f => (
-              <label key={f.name} style={{ display: "block", marginBottom: 10, cursor: "pointer" }}>
-                <input type="checkbox" checked={selectedLogs.includes(f.name)} onChange={() => toggleLog(f.name)} style={{ marginRight: 8 }} />
-                {f.name}
-              </label>
-            ))}
-            <VariantBarCharts variants={dfg?.variants} logNames={selectedLogs} />
+            {sidebarOpen && (
+              <div style={{ height: '100vh', overflowY: 'auto' }}>
+                <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>Logs</h3>
+                {files.map(f => (
+                  <label key={f.name} style={{ display: "block", marginBottom: 10, cursor: "pointer" }}>
+                    <input type="checkbox" checked={selectedLogs.includes(f.name)} onChange={() => toggleLog(f.name)} style={{ marginRight: 8 }} />
+                    {f.name}
+                  </label>
+                ))}
+                <VariantBarCharts variants={dfg?.variants} logNames={selectedLogs} selectedVariants={selectedVariants} onToggleVariant={toggleVariant} />
+              </div>
+            )}
           </motion.div>
+
+          {/* Move toggle outside the transformed sidebar so fixed positioning remains relative to viewport */}
+          <button aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} onClick={() => setSidebarOpen(s => !s)}
+            style={{
+              position: 'fixed',
+              left: sidebarOpen ? 'calc(50vw - 24px)' : 0,
+              top: 20,
+              width: 48,
+              height: 48,
+              borderRadius: '0 24px 24px 0',
+              background: '#fff',
+              border: '1px solid rgba(0,0,0,0.06)',
+              borderLeft: sidebarOpen ? 'none' : '1px solid rgba(0,0,0,0.08)',
+              boxShadow: sidebarOpen ? 'inset -1px 0 0 rgba(0,0,0,0.04)' : '0 6px 20px rgba(0,0,0,0.10)',
+              zIndex: 99999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'left 0.35s cubic-bezier(.2,.8,.2,1), box-shadow 0.2s, border 0.2s, background 0.2s'
+            }}>
+            {/* decorative seam to blend with sidebar when open */}
+            <div style={{ position: 'absolute', left: -8, top: 4, bottom: 4, width: 8, borderTopRightRadius: 6, borderBottomRightRadius: 6, background: sidebarOpen ? '#fff' : 'transparent', pointerEvents: 'none', boxShadow: sidebarOpen ? 'none' : 'none' }} />
+            <div style={{ width: 18, height: 12, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transform: sidebarOpen ? 'none' : 'rotateY(180deg)', transition: 'transform 0.2s' }}>
+              <span style={{ display: 'block', height: 2, background: '#222', borderRadius: 2 }} />
+              <span style={{ display: 'block', height: 2, background: '#222', borderRadius: 2 }} />
+              <span style={{ display: 'block', height: 2, background: '#222', borderRadius: 2 }} />
+            </div>
+          </button>
 
           <div style={{ flex: 1, padding: 30, overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h1 style={{ fontWeight: 700, fontSize: 22 }}>Dashboard</h1>
-              <button onClick={() => setSettingsOpen(true)} style={{ padding: "8px 14px", borderRadius: 12, background: "#4e79a7", color: "#fff", fontWeight: 600 }}>Settings</button>
+              <button onClick={() => setSettingsOpen(true)} aria-label="Open settings" title="Settings" style={{ padding: 8, borderRadius: 10, background: 'transparent', color: 'inherit', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' }}>
+                <img src="/gear.png" alt="Settings" style={{ width: 40, height: 40, display: 'block' }} />
+              </button>
             </div>
 
             {selectedLogs.length > 1 && (
@@ -632,16 +688,7 @@ export default function Home() {
                   <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: "100%" }} />
                 </label>
 
-                <h3 style={{ marginTop: 20, fontWeight: 700, fontSize: 16 }}>Variants</h3>
-                {dfg?.variants?.length > 0 && dfg.variants.map(v => (
-                  <label key={v.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <span>
-                      <input type="checkbox" checked={selectedVariants.has(v.key)} onChange={() => toggleVariant(v.key)} style={{ marginRight: 8 }} />
-                      {v.sequence.join("→")}
-                    </span>
-                    <small style={{ fontFamily: "monospace" }}>{v.total}</small>
-                  </label>
-                ))}
+                {/* Variant selection moved to sidebar */}
               </div>
             </motion.div>
           </motion.div>
