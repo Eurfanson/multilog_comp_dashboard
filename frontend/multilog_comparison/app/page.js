@@ -130,6 +130,7 @@ export default function Home() {
   const [significanceInput, setSignificanceInput] = useState("0.05");
   const [nodeColor, setNodeColor] = useState("#55efc4");
   const [highlightColor, setHighlightColor] = useState("#ff3b30");
+  const [readableMode, setReadableMode] = useState(false);
 
   const containerRefs = useRef({});
   const networkInstances = useRef({});
@@ -143,6 +144,24 @@ export default function Home() {
   // keep a ref in sync so vis event handlers can read latest bubble state
   useEffect(() => { edgeBubbleRef.current = edgeBubble; }, [edgeBubble]);
   useEffect(() => { nodeBubbleRef.current = nodeBubble; }, [nodeBubble]);
+  useEffect(() => {
+    if (!dfg) return;
+    if (Object.keys(nodePositions.current).length > 0) return;
+
+    const nodeIds = dfg.nodes || [];
+    if (!nodeIds.length) return;
+
+    const radius = 220;                        
+    const angleStep = (2 * Math.PI) / nodeIds.length;
+
+    nodeIds.forEach((id, idx) => {
+      const angle = idx * angleStep;
+      nodePositions.current[id] = {
+        x: radius * Math.cos(angle),
+        y: radius * Math.sin(angle)
+      };
+    });
+  }, [dfg]);
 
   const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
@@ -213,7 +232,7 @@ export default function Home() {
       }
     });
 
-    const physicsEnabled = Object.keys(nodePositions.current).length === 0;
+    const physicsEnabled = false;
 
     const network = new Network(ref.current, { nodes, edges }, {
       physics: { enabled: physicsEnabled, barnesHut: { springLength: 250, centralGravity: 0.3, avoidOverlap: 1.2 } },
@@ -384,71 +403,101 @@ export default function Home() {
     network.on("stabilizationIterationsDone", () => repositionNodeBubble());
   };
 
-  useEffect(() => {
-    if (!dfg) return;
+ useEffect(() => {
+  if (!dfg) return;
+  const effectiveNodeSize = readableMode ? Math.max(nodeSize, 28) : nodeSize;
+  const effectiveEdgeWidth = readableMode ? Math.max(edgeWidth, 3) : edgeWidth;
+  const showEdgeLabels = readableMode;
 
-    selectedLogs.forEach(name => {
-      const idx = dfg.log_names.indexOf(name);
-      if (!containerRefs.current[name]) containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
+  selectedLogs.forEach(name => {
+    const idx = dfg.log_names.indexOf(name);
+    if (!containerRefs.current[name]) {
+      containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
+    }
 
-      const nodes = new DataSet(dfg.nodes.map(n => ({
-        id: n,
-        label: n,
-        color: nodeColor,
-        size: nodeSize,
-        font: { color: "#111", size: 18 }
-      })));
+  const effectiveNodeSize = readableMode ? nodeSize + 10 : nodeSize;
+const effectiveFontSize = readableMode ? 22 : 18;
 
-      const edges = new DataSet(dfg.dfgs[idx].map(({ from, to, freq }) => ({
+const nodes = new DataSet(
+  dfg.nodes.map(n => ({
+    id: n,
+    label: n,
+    color: readableMode ? "#000" : nodeColor,
+    size: effectiveNodeSize,
+    font: { color: "#111", size: effectiveFontSize }
+  }))
+);
+
+
+    const edges = new DataSet(
+      dfg.dfgs[idx].map(({ from, to, freq }) => ({
         from,
         to,
         freq,
-        // label hidden by default; shown on click
-        width: Math.min(edgeWidth, 1 + Math.log10(freq + 1)),
+        label: showEdgeLabels ? String(freq) : undefined,
+        font: showEdgeLabels
+          ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" }
+          : undefined,
+        width: Math.min(
+          effectiveEdgeWidth,
+          1 + Math.log10(freq + 1)
+        ),
         arrows: { to: { enabled: true, scaleFactor: 0.5 } }
-      })));
+      }))
+    );
 
-      renderDFG(nodes, edges, containerRefs.current[name], name);
+    renderDFG(nodes, edges, containerRefs.current[name], name);
+  });
+
+  if (selectedLogs.length > 1) {
+    if (!containerRefs.current["merged"]) {
+      containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
+    }
+
+    const mergedNodes = new DataSet(
+      dfg.nodes.map(n => ({
+        id: n,
+        label: n,
+        color: getNodeColor(dfg.stats[n], true),
+        size: effectiveNodeSize,
+        font: { color: "#111", size: readableMode ? 20 : 18 }
+      }))
+    );
+
+    const mergedEdgesMap = {};
+    dfg.dfgs.forEach((logDfg, idx) => {
+      const logName = dfg.log_names[idx];
+      if (!selectedLogs.includes(logName)) return;
+      logDfg.forEach(({ from, to, freq }) => {
+        const key = `${from}->${to}`;
+        mergedEdgesMap[key] = (mergedEdgesMap[key] || 0) + freq;
+      });
     });
 
-    if (selectedLogs.length > 1) {
-      if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
-
-      const mergedNodes = new DataSet(
-        dfg.nodes.map(n => ({
-          id: n,
-          label: n,
-          color: getNodeColor(dfg.stats[n], true),
-          size: nodeSize,
-          font: { color: "#111", size: 18 }
-        }))
-      );
-
-      const mergedEdgesMap = {};
-      dfg.dfgs.forEach((logDfg, idx) => {
-        const logName = dfg.log_names[idx];
-        if (!selectedLogs.includes(logName)) return;
-        logDfg.forEach(({ from, to, freq }) => {
-          const key = `${from}->${to}`;
-          mergedEdgesMap[key] = (mergedEdgesMap[key] || 0) + freq;
-        });
-      });
-
-      const mergedEdges = new DataSet(Object.entries(mergedEdgesMap).map(([k, freq]) => {
+    const mergedEdges = new DataSet(
+      Object.entries(mergedEdgesMap).map(([k, freq]) => {
         const [from, to] = k.split("->");
         return {
           from,
           to,
           freq,
-          // label hidden by default; shown on click
-          width: Math.min(edgeWidth, 1 + Math.log10(freq + 1)),
+          label: showEdgeLabels ? String(freq) : undefined,
+          font: showEdgeLabels
+            ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" }
+            : undefined,
+          width: Math.min(
+            effectiveEdgeWidth,
+            1 + Math.log10(freq + 1)
+          ),
           arrows: { to: { enabled: true, scaleFactor: 0.5 } }
         };
-      }));
+      })
+    );
 
-      renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
-    }
-  }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor]);
+    renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
+  }
+}, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode]);
+
 
   return (
     <div style={{ minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif", background: "#f3f3f7" }}>
@@ -687,6 +736,15 @@ export default function Home() {
                 <label>Highlight Node Color
                   <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: "100%" }} />
                 </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input 
+                     type="checkbox" 
+                     checked={readableMode} 
+                      onChange={() => setReadableMode(!readableMode)} 
+                   />
+                  Enable Readable DFG Mode
+                </label>
+
 
                 {/* Variant selection moved to sidebar */}
               </div>

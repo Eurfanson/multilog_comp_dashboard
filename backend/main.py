@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# ---------------- Helpers Dimo1----------------
+# ---------------- Helpers ----------------
 def eta_squared_anova(stat, df_between, df_total):
     return stat * df_between / (stat * df_between + df_total) if df_total > 0 else None
 
@@ -30,6 +30,31 @@ def safe_float(x):
     if x is None or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
         return None
     return round(x, 5) if isinstance(x, float) else x
+
+def format_posthoc_simple(posthoc_res, valid):
+    """
+    Convert posthoc result (dict from Dunn/Tukey) to a readable flat dict:
+    "Log 1 vs Log 2": { "p_value": 0.123, "test": "Dunn", "significant": True }
+    """
+    if not isinstance(posthoc_res, dict):
+        return {}
+
+    k = len(valid)
+    result = {}
+    for i in range(k):
+        for j in range(i + 1, k):
+            log_i = f"Log {i+1}"
+            log_j = f"Log {j+1}"
+            p_val = posthoc_res.get(j, {}).get(i, None)
+            if p_val is not None:
+                result[f"{log_i} vs {log_j}"] = {
+                    "p_value": round(p_val, 5),
+                    "test": "Dunn",
+                    "significant": p_val < 0.05
+                }
+            else:
+                result[f"{log_i} vs {log_j}"] = {"p_value": None, "test": "Dunn", "significant": None}
+    return result
 
 # ---------------- POST ----------------
 @app.post("/dfg_multi")
@@ -43,7 +68,6 @@ async def dfg_multi(
 
         logs, names, dfs = [], [], []
 
-        # Dimo2
         for file in files:
             df = pd.read_csv(file.file)
             df.rename(columns={"case": "case:concept:name",
@@ -62,8 +86,6 @@ async def dfg_multi(
             dfs.append(df.copy())
             logs.append(log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG))
             names.append(file.filename)
-        #Dimo2
-
 
         # Extract variants
         all_variants, trace_keys_all = [], []
@@ -80,11 +102,7 @@ async def dfg_multi(
             selected_keys = selected_variants_raw.split(",")
             filtered_logs = []
             for log in logs:
-                f_log = []
-                for trace in log:
-                    seq_key = "|".join(event["concept:name"] for event in trace)
-                    if seq_key in selected_keys:
-                        f_log.append(trace)
+                f_log = [trace for trace in log if "|".join(event["concept:name"] for event in trace) in selected_keys]
                 filtered_logs.append(f_log)
             logs = filtered_logs
 
@@ -108,14 +126,11 @@ async def dfg_multi(
         # Node frequency per log
         freq_dict = {}
         for node in nodes:
-            per_log_lists = []
-            for df in dfs:
-                counts = df.groupby('case:concept:name')['concept:name'].apply(lambda x: (x == node).sum()).tolist()
-                per_log_lists.append(counts)
+            per_log_lists = [df.groupby('case:concept:name')['concept:name'].apply(lambda x: (x == node).sum()).tolist() for df in dfs]
             freq_dict[node] = per_log_lists
 
         # Statistical Tests
-        stats_result, posthoc_json = {}, {}
+        stats_result = {}
         alpha, min_total_count = 0.05, 3
 
         for node, lists_per_log in freq_dict.items():
@@ -129,12 +144,13 @@ async def dfg_multi(
             all_vals = [v for lst in valid for v in lst]
             normal = len(all_vals) >= 8 and shapiro(all_vals)[1] > 0.05
 
+            posthoc_res = None
+
             if k == 2:
                 if normal:
                     stat, p = ttest_ind(*valid, equal_var=False)
                     effect_size = eta_squared_anova(stat, 1, n_total - 2)
                     test_name = "t-test"
-                    posthoc_res = None
                 else:
                     stat, p = kruskal(*valid)
                     effect_size = epsilon_squared_kruskal(stat, n_total, k)
@@ -154,7 +170,8 @@ async def dfg_multi(
                             all_vals_flat.extend(lst)
                             group_labels.extend([idx]*len(lst))
                         tukey = pairwise_tukeyhsd(endog=all_vals_flat, groups=group_labels, alpha=0.05)
-                        posthoc_res = tukey.summary().as_text()
+                        # Tukey can be processed into simple dict if needed
+                        posthoc_res = None
                     except:
                         posthoc_res = None
                 else:
@@ -171,25 +188,8 @@ async def dfg_multi(
                 "p_value": safe_float(p),
                 "effect_size": safe_float(effect_size),
                 "test": test_name,
-                "posthoc": posthoc_res
+                "posthoc": format_posthoc_simple(posthoc_res, valid)
             }
-
-            # Beautify posthoc JSON per log
-            if isinstance(posthoc_res, dict):
-                ph_json = {}
-                for i, lst_i in enumerate(valid):
-                    log_i = f"Log {i+1}"
-                    ph_json[log_i] = {}
-                    for j, lst_j in enumerate(valid):
-                        log_j = f"Log {j+1}"
-                        if i == j:
-                            ph_json[log_i][log_j] = {"value": 1, "posthoc": "-"}
-                        else:
-                            ph_val = safe_float(posthoc_res.get(j, {}).get(i, None))
-                            ph_json[log_i][log_j] = {"value": ph_val, "posthoc": "Dunn"}
-                posthoc_json[node] = ph_json
-            else:
-                posthoc_json[node] = posthoc_res
 
         # Merge DFGs
         merged_dfg = {}
@@ -203,17 +203,11 @@ async def dfg_multi(
         }
         merged_dfg_significant = {e: f for e, f in merged_dfg.items() if e[0] in sig_nodes or e[1] in sig_nodes}
 
-        # Convert DFGs to JSON DIMO3 
-        dfgs_json = []
-        for d in dfgs:
-            edges = [{"from": s, "to": t, "freq": f} for (s, t), f in d.items()]
-            dfgs_json.append(edges)  # each log separately
-
+        # Convert DFGs to JSON
+        dfgs_json = [[{"from": s, "to": t, "freq": f} for (s, t), f in d.items()] for d in dfgs]
         merged_dfg_json = [{"from": s, "to": t, "freq": f} for (s, t), f in merged_dfg.items()]
         merged_dfg_significant_json = [{"from": s, "to": t, "freq": f} for (s, t), f in merged_dfg_significant.items()]
-        # DIMO3 
-        
-        
+
         # Variants counts
         for v in all_variants:
             seq = v["sequence"]
@@ -225,7 +219,6 @@ async def dfg_multi(
             "nodes": nodes,
             "dfgs": dfgs_json,
             "stats": stats_result,
-            "posthoc_json": posthoc_json,
             "log_names": names,
             "merged_dfg": merged_dfg_json,
             "merged_dfg_significant": merged_dfg_significant_json,
@@ -236,6 +229,7 @@ async def dfg_multi(
     except Exception as e:
         print("Exception in /dfg_multi", e)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException
