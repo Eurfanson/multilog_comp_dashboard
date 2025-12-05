@@ -33,28 +33,128 @@ def safe_float(x):
 
 def format_posthoc_simple(posthoc_res, valid):
     """
-    Convert posthoc result (dict from Dunn/Tukey) to a readable flat dict:
-    "Log 1 vs Log 2": { "p_value": 0.123, "test": "Dunn", "significant": True }
+    Normalize posthoc results into a flat dict of comparisons:
+    "Log i vs Log j": { "p_value": ..., "test": "Dunn"/"Tukey", "significant": True/False }
+    Accepts:
+      - pandas.DataFrame (from scikit_posthocs)
+      - dict-of-dicts (from DataFrame.to_dict())
+      - custom dict produced from Tukey summary
+    Returns None if no posthoc_res.
     """
-    if not isinstance(posthoc_res, dict):
-        return {}
+    if posthoc_res is None:
+        return None
 
     k = len(valid)
+    if k < 2:
+        return None
+
     result = {}
-    for i in range(k):
-        for j in range(i + 1, k):
-            log_i = f"Log {i+1}"
-            log_j = f"Log {j+1}"
-            p_val = posthoc_res.get(j, {}).get(i, None)
-            if p_val is not None:
-                result[f"{log_i} vs {log_j}"] = {
-                    "p_value": round(p_val, 5),
-                    "test": "Dunn",
-                    "significant": p_val < 0.05
-                }
-            else:
-                result[f"{log_i} vs {log_j}"] = {"p_value": None, "test": "Dunn", "significant": None}
-    return result
+
+    # Helper to push pair
+    def push(i, j, p, test_name):
+        key = f"Log {i+1} vs Log {j+1}"
+        result[key] = {
+            "p_value": round(float(p), 5) if p is not None else None,
+            "test": test_name,
+            "significant": (float(p) < 0.05) if (p is not None) else None
+        }
+
+    # Case: pandas DataFrame (scikit-posthocs)
+    if isinstance(posthoc_res, pd.DataFrame):
+        df = posthoc_res
+        for i in range(k):
+            for j in range(i + 1, k):
+                try:
+                    p = df.iloc[i, j]
+                except Exception:
+                    try:
+                        p = df.iloc[j, i]
+                    except Exception:
+                        p = None
+                push(i, j, p, "Dunn")
+        return result
+
+    # Case: dict-of-dicts (DataFrame.to_dict())
+    if isinstance(posthoc_res, dict):
+        # keys might be ints or strings; normalize access
+        for i in range(k):
+            for j in range(i + 1, k):
+                p = None
+                # try column j then i
+                for key_j in (j, str(j)):
+                    col = posthoc_res.get(key_j)
+                    if isinstance(col, dict):
+                        for key_i in (i, str(i)):
+                            if key_i in col:
+                                p = col[key_i]
+                                break
+                    if p is not None:
+                        break
+                # fallback: try reverse orientation
+                if p is None:
+                    for key_i in (i, str(i)):
+                        col = posthoc_res.get(key_i)
+                        if isinstance(col, dict):
+                            for key_j in (j, str(j)):
+                                if key_j in col:
+                                    p = col[key_j]
+                                    break
+                        if p is not None:
+                            break
+                push(i, j, p, "Dunn")
+        return result
+
+    # Otherwise, if it's some other mapping/list handle gracefully (try iteration)
+    try:
+        # assume posthoc_res is iterable of ((i,j), p)
+        for item in posthoc_res:
+            # can't reliably parse — skip
+            pass
+    except Exception:
+        pass
+
+    return None
+
+def generate_node_hierarchy(dfg):
+    """
+    Generate a hierarchical tree structure for nodes from the DFG.
+    The output is a dictionary where each node has a list of child nodes.
+    """
+    node_hierarchy = {}
+
+    # Build the parent-child relationships
+    for (from_node, to_node), _ in dfg.items():
+        if from_node not in node_hierarchy:
+            node_hierarchy[from_node] = []
+        node_hierarchy[from_node].append(to_node)
+
+    # Ensure all nodes are included even if they have no children
+    for node in dfg.keys():
+        if node not in node_hierarchy:
+            node_hierarchy[node] = []
+
+    return node_hierarchy
+
+# ---------------- Convert DFGs to JSON with guaranteed start/end ----------------
+def dfg_to_json_with_nodes(dfg, log=None):
+    edges = []
+    nodes_set = set()
+    for (s, t), f in dfg.items():
+        edges.append({"from": s, "to": t, "freq": f})
+        nodes_set.add(s)
+        nodes_set.add(t)
+
+    # Standard DFG start/end
+    start_nodes = [n for n in nodes_set if n not in {t for (_, t) in dfg.keys()}]
+    end_nodes = [n for n in nodes_set if n not in {s for (s, _) in dfg.keys()}]
+
+    # fallback: use first/last event in traces if empty
+    if log and not start_nodes:
+        start_nodes = list({trace[0]["concept:name"] for trace in log if len(trace) > 0})
+    if log and not end_nodes:
+        end_nodes = list({trace[-1]["concept:name"] for trace in log if len(trace) > 0})
+
+    return {"edges": edges, "start_nodes": start_nodes, "end_nodes": end_nodes}
 
 # ---------------- POST ----------------
 @app.post("/dfg_multi")
@@ -65,6 +165,8 @@ async def dfg_multi(
     try:
         if not files:
             raise HTTPException(status_code=400, detail="No files uploaded")
+        
+
 
         logs, names, dfs = [], [], []
 
@@ -73,7 +175,6 @@ async def dfg_multi(
             df.rename(columns={"case": "case:concept:name",
                                "activity": "concept:name",
                                "timestamp": "time:timestamp"}, inplace=True)
-
             for col in ["case:concept:name", "concept:name", "time:timestamp"]:
                 if col not in df.columns:
                     raise HTTPException(status_code=400, detail=f"Missing column {col} in {file.filename}")
@@ -87,7 +188,7 @@ async def dfg_multi(
             logs.append(log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG))
             names.append(file.filename)
 
-        # Extract variants
+        # Extract variants (keep original behavior)
         all_variants, trace_keys_all = [], []
         for df in dfs:
             df['prev_act'] = df.groupby('case:concept:name')['concept:name'].shift(1).fillna('start')
@@ -145,42 +246,69 @@ async def dfg_multi(
             normal = len(all_vals) >= 8 and shapiro(all_vals)[1] > 0.05
 
             posthoc_res = None
+            test_name = None
 
             if k == 2:
                 if normal:
                     stat, p = ttest_ind(*valid, equal_var=False)
                     effect_size = eta_squared_anova(stat, 1, n_total - 2)
                     test_name = "t-test"
+                    # no posthoc for 2-group t-test (not meaningful)
+                    posthoc_res = None
                 else:
                     stat, p = kruskal(*valid)
                     effect_size = epsilon_squared_kruskal(stat, n_total, k)
                     test_name = "Kruskal-Wallis"
                     try:
-                        posthoc_res = sp.posthoc_dunn(valid, p_adjust='bonferroni').to_dict()
-                    except:
+                        # scikit_posthocs expects a list of arrays; returns DataFrame
+                        df_post = sp.posthoc_dunn(valid, p_adjust='bonferroni')
+                        # ensure DataFrame
+                        if isinstance(df_post, pd.DataFrame):
+                            posthoc_res = df_post
+                        else:
+                            posthoc_res = df_post.to_dict() if hasattr(df_post, "to_dict") else None
+                    except Exception:
                         posthoc_res = None
             else:
                 if normal:
                     stat, p = f_oneway(*valid)
                     effect_size = eta_squared_anova(stat, k - 1, n_total - k)
                     test_name = "ANOVA"
+                    # compute Tukey HSD post-hoc
                     try:
                         all_vals_flat, group_labels = [], []
-                        for idx, lst in enumerate(valid):
+                        for idx_g, lst in enumerate(valid):
                             all_vals_flat.extend(lst)
-                            group_labels.extend([idx]*len(lst))
+                            group_labels.extend([idx_g] * len(lst))
                         tukey = pairwise_tukeyhsd(endog=all_vals_flat, groups=group_labels, alpha=0.05)
-                        # Tukey can be processed into simple dict if needed
-                        posthoc_res = None
-                    except:
+                        # parse tukey summary table
+                        tukey_rows = tukey.summary().data[1:]
+                        # build dict in same orientation as Dunn .to_dict() usage: posthoc_res[j][i] = p
+                        tukey_dict = {}
+                        for row in tukey_rows:
+                            # row: [group1, group2, meandiff, p-adj, lower, upper, reject]
+                            try:
+                                g1 = int(str(row[0]))
+                                g2 = int(str(row[1]))
+                                pval = float(row[3])
+                            except Exception:
+                                # if group names are not ints, try to map by index via order (fallback)
+                                continue
+                            tukey_dict.setdefault(g2, {})[g1] = pval
+                        posthoc_res = tukey_dict
+                    except Exception:
                         posthoc_res = None
                 else:
                     stat, p = kruskal(*valid)
                     effect_size = epsilon_squared_kruskal(stat, n_total, k)
                     test_name = "Kruskal-Wallis"
                     try:
-                        posthoc_res = sp.posthoc_dunn(valid, p_adjust='bonferroni').to_dict()
-                    except:
+                        df_post = sp.posthoc_dunn(valid, p_adjust='bonferroni')
+                        if isinstance(df_post, pd.DataFrame):
+                            posthoc_res = df_post
+                        else:
+                            posthoc_res = df_post.to_dict() if hasattr(df_post, "to_dict") else None
+                    except Exception:
                         posthoc_res = None
 
             stats_result[node] = {
@@ -203,24 +331,43 @@ async def dfg_multi(
         }
         merged_dfg_significant = {e: f for e, f in merged_dfg.items() if e[0] in sig_nodes or e[1] in sig_nodes}
 
-        # Convert DFGs to JSON
-        dfgs_json = [[{"from": s, "to": t, "freq": f} for (s, t), f in d.items()] for d in dfgs]
+        # Convert DFGs to JSON with guaranteed start/end
+        dfgs_json = []
+        dfgs_start_nodes = []
+        dfgs_end_nodes = []
+        for idx, d in enumerate(dfgs):
+            res = dfg_to_json_with_nodes(d, logs[idx])
+            dfgs_json.append(res["edges"])
+            dfgs_start_nodes.append(res["start_nodes"])
+            dfgs_end_nodes.append(res["end_nodes"])
+
         merged_dfg_json = [{"from": s, "to": t, "freq": f} for (s, t), f in merged_dfg.items()]
+        merged_res = dfg_to_json_with_nodes(merged_dfg, [trace for log in logs for trace in log])
+        merged_dfg_start_nodes = merged_res["start_nodes"]
+        merged_dfg_end_nodes = merged_res["end_nodes"]
         merged_dfg_significant_json = [{"from": s, "to": t, "freq": f} for (s, t), f in merged_dfg_significant.items()]
 
-        # Variants counts
+        # Variants counts (kept as original)
         for v in all_variants:
             seq = v["sequence"]
             v["total"] = sum(1 for s in trace_keys_all if s == seq)
             v["counts_per_log"] = [sum(1 for trace in log if tuple(e["concept:name"] for e in trace) == seq) for log in logs]
             v["present"] = [c > 0 for c in v["counts_per_log"]]
-
+        # Generate node hierarchy from DFGs
+        node_hierarchy = {}
+        for dfg in dfgs:
+            hierarchy = generate_node_hierarchy(dfg)
+            node_hierarchy.update(hierarchy)
         return {
             "nodes": nodes,
             "dfgs": dfgs_json,
+            "dfgs_start_nodes": dfgs_start_nodes,
+            "dfgs_end_nodes": dfgs_end_nodes,
             "stats": stats_result,
             "log_names": names,
             "merged_dfg": merged_dfg_json,
+            "merged_dfg_start_nodes": merged_dfg_start_nodes,
+            "merged_dfg_end_nodes": merged_dfg_end_nodes,
             "merged_dfg_significant": merged_dfg_significant_json,
             "alpha": alpha,
             "variants": all_variants
@@ -229,6 +376,7 @@ async def dfg_multi(
     except Exception as e:
         print("Exception in /dfg_multi", e)
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 """
