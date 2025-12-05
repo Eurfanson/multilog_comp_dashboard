@@ -60,8 +60,8 @@ useEffect(() => {
 
     // Define spacing for nodes
 
-    const horizontalSpacing = 900; // Space between nodes horizontally for middle nodes
-    const individualVerticalSpacing = 80; // Adjusted vertical spacing for individual DFGs (closer to connected nodes)
+    const horizontalSpacing = 500; // Space between nodes horizontally for middle nodes
+    const individualVerticalSpacing = 60; // Adjusted vertical spacing for individual DFGs (closer to connected nodes)
 
     // Group nodes by their type (start, end, both)
     const startNodes = Array.from(mergedStartNodes);
@@ -71,7 +71,7 @@ useEffect(() => {
     // Position start nodes (upper half)
     startNodes.forEach((id, idx) => {
         nodePositions.current[id] = {
-            x: 30, // Place at the center horizontally
+            x: 100, // Place at the center horizontally
             y: -individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each start node
         };
     });
@@ -79,7 +79,7 @@ useEffect(() => {
     // Position end nodes (lower half)
     endNodes.forEach((id, idx) => {
         nodePositions.current[id] = {
-            x: -100, // Place at the center horizontally
+            x: 0, // Place at the center horizontally
             y: individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each end node
         };
     });
@@ -93,11 +93,7 @@ useEffect(() => {
         };
     });
 
-    // Adjust "Manager Review" node position if it's too high
-    const managerReviewNode = "Manager Review"; // Adjust this string to match the actual node ID for "Manager Review"
-    if (nodePositions.current[managerReviewNode]) {
-        nodePositions.current[managerReviewNode].y = 0; // Bring it closer to the center
-    }
+
 
     // Add positions for START and END nodes for individual DFGs (closer to connected nodes)
     nodePositions.current["START"] = {
@@ -106,7 +102,7 @@ useEffect(() => {
     };
     nodePositions.current["END"] = {
         x: 0, // Place END node at the center horizontally
-        y: individualVerticalSpacing * (endNodes.length), // Place it below all end nodes
+        y: individualVerticalSpacing * (endNodes.length+2), // Place it below all end nodes
     };
 
     // Log for debugging
@@ -171,7 +167,7 @@ useEffect(() => {
             from, to, freq,
             label: showEdgeLabels ? String(freq) : undefined,
             font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-            width: (freq*1.1 + 1),
+            width: Math.min((freq*1.1 + 1),7),
             arrows: { to: { enabled: true, scaleFactor: 0.5 } },
             smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
           })),
@@ -257,8 +253,8 @@ useEffect(() => {
               from, to, freq,
               label: showEdgeLabels ? String(freq) : undefined,
               font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-              width:  (freq*1.1 + 1),
-              arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+              width: Math.min(freq * 1.1 + 1, 7),
+              arrows: { to: { enabled: true, scaleFactor: 0.3 } },
              
             };
           }),
@@ -373,9 +369,9 @@ useEffect(() => {
   const network = new Network(ref.current, { nodes: new DataSet(filteredNodes), edges }, {
     physics: { enabled: physicsEnabled, barnesHut: { springLength: 250, centralGravity: 0.3, avoidOverlap: 2 } },
     edges: { smooth: true }, // force straight
-    nodes: { shape: "dot" },
+    nodes: { shape: "dot"},
     layout: { improvedLayout: true },
-    interaction: { hover: true }
+    interaction: { hover: true}
   });
 
   networkInstances.current[logName] = network;
@@ -409,7 +405,8 @@ network.on("click", params => {
       const bubbleY = rect.top + midDOM.y + 10;
 
       setNodeBubble({ visible: true, node: nodeId, stats: statsRow, x: bubbleX, y: bubbleY, logName });
-      setEdgeBubble({ visible: false, edge: null, x: 0, y: 0, logName: null });
+      
+
       return;
     }
 
@@ -432,7 +429,16 @@ network.on("click", params => {
         const pTo = positions[toNode];
         if (!pFrom || !pTo) {
           const { x = 0, y = 0 } = params.pointer?.DOM || {};
-          setEdgeBubble({ visible: true, edge: edgeObj, x, y, logName });
+          setEdgeBubble({         
+        visible: true,
+        edge: edgeObj,
+        edgeId,
+        fromNode,
+        toNode,
+        frequency,
+        x: bubbleX,
+        y: bubbleY,
+        logName});
           return;
         }
         midCanvas = { x: (pFrom.x + pTo.x) / 2, y: (pFrom.y + pTo.y) / 2 };

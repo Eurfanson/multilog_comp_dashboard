@@ -18,7 +18,17 @@ export const useDfgState = () => {
   const containerRefs = useRef({});
   const networkInstances = useRef({});
   const nodePositions = useRef({});
-  const [edgeBubble, setEdgeBubble] = useState({ visible: false, edge: null, x: 0, y: 0, logName: null });
+  const [edgeBubble, setEdgeBubble] = useState({
+  visible: false,
+  edge: null,
+  x: 0,
+  y: 0,
+  logName: null,
+  fromNode: null,  // Add fromNode
+  toNode: null,    // Add toNode
+  frequency: null  // Add frequency
+});
+
   const edgeBubbleRef = useRef(edgeBubble);
   const [nodeBubble, setNodeBubble] = useState({ visible: false, node: null, x: 0, y: 0, logName: null });
   const nodeBubbleRef = useRef(nodeBubble);

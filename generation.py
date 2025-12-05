@@ -1,10 +1,10 @@
 import pandas as pd
 import numpy as np
 
-def generate_event_log(filename, num_cases=5, events_per_case=4, activity_bias=None, time_range=(0, 10000)):
+def generate_event_log(filename, num_cases=100, events_per_case=5, activity_bias=None, time_range=(0, 10000)):
     np.random.seed(None)  # different seed each run
-    activities = ["Approve Request", "Quality Check", "Process Request", "Submit Request", 
-                  "Reject Request", "Rework Request", "Manager Review", "Notify Completion"]
+    activities = ["Approve Request", "Quality Check", "Submit Request", 
+                  "Reject Request",  "Notify Completion"]
     
     cases = ["Case" + str(i+1) for i in range(num_cases)]
     data = []
@@ -13,9 +13,29 @@ def generate_event_log(filename, num_cases=5, events_per_case=4, activity_bias=N
     if activity_bias is None:
         activity_bias = {a: 1/len(activities) for a in activities}
 
-    # normalize
+    # Normalize the probabilities to ensure they sum to 1
     total = sum(activity_bias.values())
+
+    if total == 0:
+        raise ValueError("The total probability sum cannot be zero.")
+
+    # Normalize if necessary and ensure that probabilities sum exactly to 1
     activity_prob = [activity_bias.get(a, 0) / total for a in activities]
+
+    # Check for any zero probabilities and assign a minimal value to avoid issues with np.random.choice
+    if any(p == 0 for p in activity_prob):
+        print("Warning: Some probabilities are zero. Adjusting to a small value.")
+        min_prob = 1e-6  # minimal probability to avoid zero
+        activity_prob = [p if p > 0 else min_prob for p in activity_prob]
+        total_prob = sum(activity_prob)
+        activity_prob = [p / total_prob for p in activity_prob]  # Re-normalize
+
+    # Ensure the probabilities sum exactly to 1
+    if abs(sum(activity_prob) - 1) > 1e-6:
+        print(f"Warning: Probabilities were normalized. Total sum: {sum(activity_prob)}")
+
+    # Debugging: Print the normalized probabilities
+    print(f"Normalized probabilities: {activity_prob}")
 
     for case in cases:
         for _ in range(events_per_case):

@@ -33,7 +33,11 @@ export default function EdgeBubble({ edgeBubble }) {
             textAlign: "center",
           }}
         >
-          <div style={{ color: "#333", fontWeight: 700 }}>{edgeBubble.edge.freq}</div>
+          <div style={{ color: "#333", fontWeight: 700 }}>
+            <div>{`From: ${edgeBubble.fromNode}`}</div>
+            <div>{`To: ${edgeBubble.toNode}`}</div>
+            <div>{`Frequency: ${edgeBubble.frequency}`}</div>
+            </div>
         </div>
       </div>
     </div>
