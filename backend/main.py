@@ -115,25 +115,7 @@ def format_posthoc_simple(posthoc_res, valid):
 
     return None
 
-def generate_node_hierarchy(dfg):
-    """
-    Generate a hierarchical tree structure for nodes from the DFG.
-    The output is a dictionary where each node has a list of child nodes.
-    """
-    node_hierarchy = {}
 
-    # Build the parent-child relationships
-    for (from_node, to_node), _ in dfg.items():
-        if from_node not in node_hierarchy:
-            node_hierarchy[from_node] = []
-        node_hierarchy[from_node].append(to_node)
-
-    # Ensure all nodes are included even if they have no children
-    for node in dfg.keys():
-        if node not in node_hierarchy:
-            node_hierarchy[node] = []
-
-    return node_hierarchy
 
 # ---------------- Convert DFGs to JSON with guaranteed start/end ----------------
 def dfg_to_json_with_nodes(dfg, log=None):
@@ -353,11 +335,7 @@ async def dfg_multi(
             v["total"] = sum(1 for s in trace_keys_all if s == seq)
             v["counts_per_log"] = [sum(1 for trace in log if tuple(e["concept:name"] for e in trace) == seq) for log in logs]
             v["present"] = [c > 0 for c in v["counts_per_log"]]
-        # Generate node hierarchy from DFGs
-        node_hierarchy = {}
-        for dfg in dfgs:
-            hierarchy = generate_node_hierarchy(dfg)
-            node_hierarchy.update(hierarchy)
+
         return {
             "nodes": nodes,
             "dfgs": dfgs_json,
@@ -379,69 +357,5 @@ async def dfg_multi(
 
 
 
-"""
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import pandas as pd
-from pm4py.objects.conversion.log import converter as log_converter
-from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 
-app = FastAPI()
-
-# Allow frontend requests (CORS)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # your frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
-
-# ----------------------
-# Ping endpoint to check server
-# ----------------------
-@app.get("/ping")
-def ping():
-    return {"message": "pong"}
-
-# ----------------------
-# Test CSV upload endpoint
-# ----------------------
-@app.post("/upload_test")
-async def upload_test(file: UploadFile = File(...)):
-    try:
-        df = pd.read_csv(file.file)
-        return {"preview": df.head().to_dict()}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error reading CSV: {e}")
-
-# ----------------------
-# DFG generation endpoint (returns JSON)
-# ----------------------
-@app.post("/dfg_json")
-async def dfg_json(file: UploadFile = File(...)):
-    try:
-        df = pd.read_csv(file.file)
-        df['time:timestamp'] = pd.to_datetime(df['time:timestamp'])
-        event_log = log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG)
-
-        # Compute DFG
-        dfg_result = dfg_discovery.apply(event_log)
-        dfg = dfg_result[0] if isinstance(dfg_result, tuple) else dfg_result
-
-        edges = []
-        nodes = set()
-        for key, value in dfg.items():
-            try:
-                src, tgt = key
-                edges.append({"source": src, "target": tgt, "frequency": int(value)})
-                nodes.update([src, tgt])
-            except Exception:
-                continue
-
-        return {"nodes": list(nodes), "edges": edges}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating DFG: {e}")
-"""
 

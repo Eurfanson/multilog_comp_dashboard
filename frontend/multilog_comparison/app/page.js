@@ -60,7 +60,7 @@ useEffect(() => {
 
     // Define spacing for nodes
 
-    const horizontalSpacing = 500; // Space between nodes horizontally for middle nodes
+    const horizontalSpacing = 400; // Space between nodes horizontally for middle nodes
     const individualVerticalSpacing = 60; // Adjusted vertical spacing for individual DFGs (closer to connected nodes)
 
     // Group nodes by their type (start, end, both)
@@ -89,7 +89,7 @@ useEffect(() => {
     middleNodes.forEach((id, idx) => {
         nodePositions.current[id] = {
             x: horizontalStartX + idx * horizontalSpacing, // Horizontal spacing
-            y: 0, // All placed on the same vertical level
+            y: Math.random() * 250, // All placed on the same vertical level
         };
     });
 
@@ -167,7 +167,7 @@ useEffect(() => {
             from, to, freq,
             label: showEdgeLabels ? String(freq) : undefined,
             font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-            width: Math.min((freq*1.1 + 1),7),
+            width: Math.min((freq*1.1 + 0.3),3.5),
             arrows: { to: { enabled: true, scaleFactor: 0.5 } },
             smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
           })),
@@ -253,9 +253,9 @@ useEffect(() => {
               from, to, freq,
               label: showEdgeLabels ? String(freq) : undefined,
               font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-              width: Math.min(freq * 1.1 + 1, 7),
-              arrows: { to: { enabled: true, scaleFactor: 0.3 } },
-             
+              width: Math.min(freq * 1.1 + 0.3, 3.5),
+              arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+              smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1)},  // Add small random variation to the offset}
             };
           }),
           ...Array.from(mergedStartNodes).map(node => ({

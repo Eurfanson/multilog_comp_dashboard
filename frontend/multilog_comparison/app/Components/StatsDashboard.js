@@ -19,9 +19,9 @@ export default function StatsDashboard({ stats }) {
             <tr>
               <th style={{ padding: 10 }}>Node</th>
               <th style={{ padding: 10 }}>Test</th>
-              <th style={{ padding: 10 }}>Test Statistic</th>
+              <th style={{ padding: 10 }}>Test Stats</th>
               <th style={{ padding: 10 }}>p-value</th>
-              <th style={{ padding: 10 }}>Effect Size</th>
+              <th style={{ padding: 10 }}>Effect Size (η² / ε² / ω²)</th>
               <th style={{ padding: 10 }}>Post-hoc</th>
             </tr>
           </thead>
