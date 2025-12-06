@@ -212,7 +212,7 @@ async def dfg_multi(
             per_log_lists = [df.groupby('case:concept:name')['concept:name'].apply(lambda x: (x == node).sum()).tolist() for df in dfs]
             freq_dict[node] = per_log_lists
 
-        # Statistical Tests
+        # Mpde Statistical Tests
         stats_result = {}
         alpha, min_total_count = 0.05, 3
 
@@ -301,6 +301,7 @@ async def dfg_multi(
                 "posthoc": format_posthoc_simple(posthoc_res, valid)
             }
 
+        
         # Merge DFGs
         merged_dfg = {}
         for d in dfgs:
@@ -312,6 +313,60 @@ async def dfg_multi(
             if r["p_value"] < alpha and sum(df['concept:name'].eq(n).sum() for df in dfs) >= min_total_count
         }
         merged_dfg_significant = {e: f for e, f in merged_dfg.items() if e[0] in sig_nodes or e[1] in sig_nodes}
+
+                # ---------------- Edge Statistical Tests ----------------
+        edge_stats_result = {}
+        for edge in merged_dfg.keys():
+            src, tgt = edge
+            # Gather per-log counts for this edge
+            per_log_lists = []
+            for df in dfs:
+                # count occurrences where src->tgt appears consecutively in the same case
+                counts = []
+                for case, group in df.groupby("case:concept:name"):
+                    events = list(group["concept:name"])
+                    cnt = sum(1 for i in range(len(events)-1) if events[i]==src and events[i+1]==tgt)
+                    counts.append(cnt)
+                per_log_lists.append(counts)
+
+            # valid logs (at least 1 entry)
+            valid = [lst for lst in per_log_lists if len(lst) > 0]
+            k = len(valid)
+            if k < 2:
+                edge_stats_result[f"{src}->{tgt}"] = {"test": None, "stat": None, "p_value": None, "effect_size": None}
+                continue
+
+            n_total = sum(len(lst) for lst in valid)
+            all_vals = [v for lst in valid for v in lst]
+            normal = len(all_vals) >= 8 and shapiro(all_vals)[1] > 0.05
+
+            stat, p, effect_size = None, None, None
+
+            if k == 2:
+                if normal:
+                    stat, p = ttest_ind(*valid, equal_var=False)
+                    effect_size = eta_squared_anova(stat, 1, n_total-2)
+                    test_name = "t-test"
+                else:
+                    stat, p = kruskal(*valid)
+                    effect_size = epsilon_squared_kruskal(stat, n_total, k)
+                    test_name = "Kruskal-Wallis"
+            else:
+                if normal:
+                    stat, p = f_oneway(*valid)
+                    effect_size = eta_squared_anova(stat, k-1, n_total-k)
+                    test_name = "ANOVA"
+                else:
+                    stat, p = kruskal(*valid)
+                    effect_size = epsilon_squared_kruskal(stat, n_total, k)
+                    test_name = "Kruskal-Wallis"
+
+            edge_stats_result[f"{src}->{tgt}"] = {
+                "test": test_name,
+                "stat": safe_float(stat),
+                "p_value": safe_float(p),
+                "effect_size": safe_float(effect_size)
+        }
 
         # Convert DFGs to JSON with guaranteed start/end
         dfgs_json = []
@@ -342,6 +397,7 @@ async def dfg_multi(
             "dfgs_start_nodes": dfgs_start_nodes,
             "dfgs_end_nodes": dfgs_end_nodes,
             "stats": stats_result,
+            "edge_stats": edge_stats_result,
             "log_names": names,
             "merged_dfg": merged_dfg_json,
             "merged_dfg_start_nodes": merged_dfg_start_nodes,

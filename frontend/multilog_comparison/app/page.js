@@ -98,7 +98,7 @@ useEffect(() => {
     // Add positions for START and END nodes for individual DFGs (closer to connected nodes)
     nodePositions.current["START"] = {
         x: 0, // Place START node at the center horizontally
-        y: -individualVerticalSpacing * (startNodes.length + 2), // Place it above all start nodes
+        y: -individualVerticalSpacing * ((startNodes.length/2) + 0.5), // Place it above all start nodes
     };
     nodePositions.current["END"] = {
         x: 0, // Place END node at the center horizontally
@@ -527,7 +527,7 @@ network.on("click", params => {
   return (
     <div style={{ minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif", background: "#f3f3f7" }}>
       {/* Edge context bubble */}
-      <EdgeBubble edgeBubble={edgeBubble} />
+      {dfg &&<EdgeBubble edgeBubble={edgeBubble} edge_stats={dfg.edge_stats} />}
 
       {/* Node context bubble (merged DFG only) */}
       <NodeBubble nodeBubble={nodeBubble} significance={significance} />
@@ -621,7 +621,7 @@ network.on("click", params => {
               </div>
             ))}
 
-            {dfg && <StatsDashboard stats={dfg.stats} />}
+            {dfg && <StatsDashboard stats={dfg.stats} edge_stats={dfg.edge_stats} />}
           </div>
         </div>
       )}
