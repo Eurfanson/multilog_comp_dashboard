@@ -9,11 +9,11 @@ import VariantBarCharts from "./Components/VariantBarCharts";
 import EdgeBubble from "./Components/EdgeBubble";
 import NodeBubble from "./Components/NodeBubble";
 import SettingsOverlay from "./Components/SettingsOverlay";
-import { useSession, signIn, signOut } from "next-auth/react"; // 引入useSession和signIn、signOut
+import { useSession, signIn, signOut } from "next-auth/react"; 
+import { getSteps } from "./Hooks/steps";
 
 // ---------------- Home / Main Component ----------------
 export default function Home() {
-  const { data: session, status } = useSession(); // 使用useSession钩子获取用户的登录状态
 
   const {
     files, setFiles, dfg, setDfg, selectedLogs, setSelectedLogs,
@@ -23,267 +23,10 @@ export default function Home() {
     significanceInput, setSignificanceInput, nodeColor, setNodeColor,
     highlightColor, setHighlightColor, readableMode, setReadableMode,
     containerRefs, networkInstances, nodePositions, edgeBubble, setEdgeBubble,
-    edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen
+    edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen,step, setStep
   } = useDfgState();
 
-   useEffect(() => {
-    if (status === "loading") return; // 等待加载完成
-
-    if (!session) {
-      // 如果未登录，直接调用GitHub登录
-      signIn("github");
-    }
-  }, [session, status]); // 依赖 session 和 status
-  
-  useEffect(() => { edgeBubbleRef.current = edgeBubble; }, [edgeBubble]); // keep a ref in sync so vis event handlers can read latest bubble state
- 
-  useEffect(() => { nodeBubbleRef.current = nodeBubble; }, [nodeBubble]);
-
-useEffect(() => {
-    if (!dfg) return;
-
-    // Check if we have already calculated the node positions
-    if (Object.keys(nodePositions.current).length > 0) return;
-
-    const nodeIds = dfg.nodes || [];
-    if (!nodeIds.length) return;
-
-    // Prepare start and end node lists
-    const mergedStartNodes = new Set();
-    const mergedEndNodes = new Set();
-
-    selectedLogs.forEach(name => {
-        const idx = dfg.log_names.indexOf(name);
-        dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
-        dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
-    });
-
-    // Define spacing for nodes
-
-    const horizontalSpacing = 400; // Space between nodes horizontally for middle nodes
-    const individualVerticalSpacing = 60; // Adjusted vertical spacing for individual DFGs (closer to connected nodes)
-
-    // Group nodes by their type (start, end, both)
-    const startNodes = Array.from(mergedStartNodes);
-    const endNodes = Array.from(mergedEndNodes);
-    const middleNodes = nodeIds.filter(id => mergedStartNodes.has(id) && mergedEndNodes.has(id));
-
-    // Position start nodes (upper half)
-    startNodes.forEach((id, idx) => {
-        nodePositions.current[id] = {
-            x: 100, // Place at the center horizontally
-            y: -individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each start node
-        };
-    });
-
-    // Position end nodes (lower half)
-    endNodes.forEach((id, idx) => {
-        nodePositions.current[id] = {
-            x: 0, // Place at the center horizontally
-            y: individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each end node
-        };
-    });
-
-    // Position middle nodes (spread horizontally with enough space)
-    const horizontalStartX = -(middleNodes.length - 1) * horizontalSpacing / 2; // Center the middle nodes horizontally
-    middleNodes.forEach((id, idx) => {
-        nodePositions.current[id] = {
-            x: horizontalStartX + idx * horizontalSpacing, // Horizontal spacing
-            y: Math.random() * 250, // All placed on the same vertical level
-        };
-    });
-
-
-
-    // Add positions for START and END nodes for individual DFGs (closer to connected nodes)
-    nodePositions.current["START"] = {
-        x: 0, // Place START node at the center horizontally
-        y: -individualVerticalSpacing * ((startNodes.length/2) + 0.5), // Place it above all start nodes
-    };
-    nodePositions.current["END"] = {
-        x: 0, // Place END node at the center horizontally
-        y: individualVerticalSpacing * (endNodes.length+2), // Place it below all end nodes
-    };
-
-    // Log for debugging
-    console.log(`Start Nodes: ${JSON.stringify(startNodes)}`);
-    console.log(`End Nodes: ${JSON.stringify(endNodes)}`);
-    console.log(`Middle Nodes: ${JSON.stringify(middleNodes)}`);
-    console.log(`Node Positions:`, nodePositions.current);
-
-}, [dfg, selectedLogs]);
-
-
-
-useEffect(() => {
-    if (!dfg) return;
-
-    const effectiveNodeSize = readableMode ? Math.max(nodeSize, 28) : nodeSize;
-    const effectiveFontSize = readableMode ? 22 : 18;
-    const effectiveEdgeWidth = readableMode ? Math.max(edgeWidth, 3) : edgeWidth;
-    const showEdgeLabels = readableMode;
-
-    selectedLogs.forEach(name => {
-      const idx = dfg.log_names.indexOf(name);
-      if (idx === -1) return;
-
-      if (!containerRefs.current[name]) {
-        containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
-      }
-
-      const startNodes = dfg.dfgs_start_nodes?.[idx] || [];
-      const endNodes = dfg.dfgs_end_nodes?.[idx] || [];
-
-      const nodes = new DataSet(
-        [
-          ...dfg.nodes.map(n => ({
-            id: n,
-            label: n,
-            color: nodeColor,
-            size: effectiveNodeSize,
-            font: { color: "#111", size: effectiveFontSize },
-            shape: "box",
-          })),
-          {
-            id: "START",
-            label: "START",
-            shape: "triangle", // Triangle shape for START node
-            size: effectiveNodeSize,
-            font: { color: "#111", size: effectiveFontSize },
-          },
-          {
-            id: "END",
-            label: "END",
-            shape: "box", // Box shape for END node
-            size: effectiveNodeSize,
-            font: { color: "#111", size: effectiveFontSize },
-          }
-        ]
-      );
-
-      const edges = new DataSet(
-        [
-          ...dfg.dfgs[idx].map(({ from, to, freq }) => ({
-            from, to, freq,
-            label: showEdgeLabels ? String(freq) : undefined,
-            font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-            width: Math.min((freq*1.1 + 0.3),3.5),
-            arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-            smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
-          })),
-          ...startNodes.map(node => ({
-            from: "START",
-            to: node,
-            dashes: true, // Add dashed lines for connections from START node,
-            arrows: { to: { enabled: true, scaleFactor: 0.5 } } ,// Add arrows for connections from START
-            width: 2,
-            smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 } // Slight offset to prevent overlap
-          })),
-          ...endNodes.map(node => ({
-            from: node,
-            to: "END",
-            color: "#97c2fc",
-            dashes: true, // Add dashed lines for connections from END node
-            arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Add arrows for connections from START
-            width: 2,
-             smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 } // Slight offset to prevent overlap
-          }))
-        ]
-      );
-
-      renderDFG(nodes, edges, containerRefs.current[name], name);
-    });
-
-    if (selectedLogs.length > 1) {
-      if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
-
-      const mergedStartNodes = new Set();
-      const mergedEndNodes = new Set();
-
-      selectedLogs.forEach(name => {
-        const idx = dfg.log_names.indexOf(name);
-        dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
-        dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
-      });
-
-      const mergedNodes = new DataSet(
-        [
-          ...dfg.nodes.map(n => ({
-            id: n,
-            label: n,
-            color: getNodeColor(dfg.stats[n], true),
-            size: effectiveNodeSize,
-            font: { color: "#111", size: readableMode ? 20 : 18 },
-            shape: "box"
-          })),
-          {
-            id: "START",
-            label: "START",
-            shape: "triangle", // Triangle shape for START node
-            size: effectiveNodeSize,
-            font: { color: "#111", size: readableMode ? 20 : 18 }
-          },
-          {
-            id: "END",
-            label: "END",
-            shape: "box", // Box shape for END node
-            size: effectiveNodeSize,
-            font: { color: "#111", size: readableMode ? 20 : 18 }
-          }
-        ]
-      );
-
-      const mergedEdgesMap = {};
-      dfg.dfgs.forEach((logDfg, idx) => {
-        const logName = dfg.log_names[idx];
-        if (!selectedLogs.includes(logName)) return;
-        logDfg.forEach(({ from, to, freq }) => {
-          const key = `${from}->${to}`;
-          const revKey = `${to}->${from}`;
-          if (mergedEdgesMap[key] || mergedEdgesMap[revKey]) return; // skip reverse
-          mergedEdgesMap[key] = (mergedEdgesMap[key] || 0) + freq;
-        });
-      });
-
-      const mergedEdges = new DataSet(
-        [
-          ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
-            const [from, to] = k.split("->");
-            return {
-              from, to, freq,
-              label: showEdgeLabels ? String(freq) : undefined,
-              font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-              width: Math.min(freq * 1.1 + 0.3, 3.5),
-              arrows: { to: { enabled: true, scaleFactor: 0.7 } },
-              smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1)},  // Add small random variation to the offset}
-            };
-          }),
-          ...Array.from(mergedStartNodes).map(node => ({
-            from: "START",
-            to: node,
-            dashes: true, // Add dashed lines for connections from START node
-            width: 2,
-            arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Arrows added to dashed edges from START
-              smooth: { type: 'continuous', roundness: 0.7, offset: 1} // Slight offset to prevent overlap
-          })),
-          ...Array.from(mergedEndNodes).map(node => ({
-            from: node,
-            to: "END",
-            dashes: true, // Add dashed lines for connections from END node
-            width: 2,
-             color: "#97c2fc",
-             arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Arrows added to dashed edges from END
-             smooth: { type: 'continuous', roundness: 0.9, offset: 1 } // Slight offset to prevent overlap
-          }))
-        ]
-      );
-
-      renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
-    }
-  }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode]);
-
-
-  const handleFileChange = async e => {
+    const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
     setFiles(uploadedFiles);
     if (!uploadedFiles.length) return;
@@ -303,7 +46,271 @@ useEffect(() => {
       alert("Failed to fetch DFGs");
     }
   };
+  // Onboarding steps
+  const steps = getSteps({ handleFileChange, setStep });
 
+  // ---------------- Auth Logic ----------------
+  const { data: session, status } = useSession(); 
+
+  // Authentication effect
+   useEffect(() => {
+    if (status === "loading") return; // 等待加载完成
+
+    if (!session) {
+      // 如果未登录，直接调用GitHub登录
+      signIn("github");
+    }
+  }, [session, status]); //  session, status for auth check
+  
+  useEffect(() => { edgeBubbleRef.current = edgeBubble; }, [edgeBubble]); // keep a ref in sync so vis event handlers can read latest bubble state
+ 
+  useEffect(() => { nodeBubbleRef.current = nodeBubble; }, [nodeBubble]);
+
+  //layout logic
+  useEffect(() => {
+      if (!dfg) return;
+
+      // Check if we have already calculated the node positions
+     nodePositions.current = {}; // force fresh layout
+
+
+      const nodeIds = dfg.nodes || [];
+      if (!nodeIds.length) return;
+
+      // Prepare start and end node lists
+      const mergedStartNodes = new Set();
+      const mergedEndNodes = new Set();
+
+      selectedLogs.forEach(name => {
+          const idx = dfg.log_names.indexOf(name);
+          dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
+          dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
+      });
+
+      // Define spacing for nodes
+
+      const horizontalSpacing = 400; // Space between nodes horizontally for middle nodes
+      const individualVerticalSpacing = 60; // Adjusted vertical spacing for individual DFGs (closer to connected nodes)
+
+      // Group nodes by their type (start, end, both)
+      const startNodes = Array.from(mergedStartNodes);
+      const endNodes = Array.from(mergedEndNodes);
+      const middleNodes = nodeIds.filter(id => mergedStartNodes.has(id) && mergedEndNodes.has(id));
+
+      // Position start nodes (upper half)
+      startNodes.forEach((id, idx) => {
+          nodePositions.current[id] = {
+              x: 100, // Place at the center horizontally
+              y: -individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each start node
+          };
+      });
+
+      // Position end nodes (lower half)
+      endNodes.forEach((id, idx) => {
+          nodePositions.current[id] = {
+              x: 0, // Place at the center horizontally
+              y: individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each end node
+          };
+      });
+
+      // Position middle nodes (spread horizontally with enough space)
+      const horizontalStartX = -(middleNodes.length - 1) * horizontalSpacing / 2; // Center the middle nodes horizontally
+      middleNodes.forEach((id, idx) => {
+          nodePositions.current[id] = {
+              x: horizontalStartX + idx * horizontalSpacing, // Horizontal spacing
+              y: Math.random() * 250, // All placed on the same vertical level
+          };
+      });
+
+
+
+      // Add positions for START and END nodes for individual DFGs (closer to connected nodes)
+      nodePositions.current["START"] = {
+          x: 0, // Place START node at the center horizontally
+          y: -individualVerticalSpacing * ((startNodes.length/2) + 0.5), // Place it above all start nodes
+      };
+      nodePositions.current["END"] = {
+          x: 0, // Place END node at the center horizontally
+          y: individualVerticalSpacing * (endNodes.length+2), // Place it below all end nodes
+      };
+
+      // Log for debugging
+      //console.log(`Start Nodes: ${JSON.stringify(startNodes)}`);
+      //console.log(`End Nodes: ${JSON.stringify(endNodes)}`);
+      //console.log(`Middle Nodes: ${JSON.stringify(middleNodes)}`);
+      console.log(`Node Positions:`, nodePositions.current);
+
+  }, [dfg, selectedLogs]);
+
+  //vis network rendering logic
+  useEffect(() => {
+      if (!dfg) return;
+
+      const effectiveNodeSize = readableMode ? Math.max(nodeSize, 28) : nodeSize;
+      const effectiveFontSize = readableMode ? 22 : 18;
+      const effectiveEdgeWidth = readableMode ? Math.max(edgeWidth, 3) : edgeWidth;
+      const showEdgeLabels = readableMode;
+
+      selectedLogs.forEach(name => {
+        const idx = dfg.log_names.indexOf(name);
+        if (idx === -1) return;
+
+        if (!containerRefs.current[name]) {
+          containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
+        }
+
+        const startNodes = dfg.dfgs_start_nodes?.[idx] || [];
+        const endNodes = dfg.dfgs_end_nodes?.[idx] || [];
+
+        const nodes = new DataSet(
+          [
+            ...dfg.nodes.map(n => ({
+              id: n,
+              label: n,
+              color: nodeColor,
+              size: effectiveNodeSize,
+              font: { color: "#111", size: effectiveFontSize },
+              shape: "box",
+            })),
+            {
+              id: "START",
+              label: "START",
+              shape: "triangle", // Triangle shape for START node
+              size: effectiveNodeSize,
+              font: { color: "#111", size: effectiveFontSize },
+            },
+            {
+              id: "END",
+              label: "END",
+              shape: "box", // Box shape for END node
+              size: effectiveNodeSize,
+              font: { color: "#111", size: effectiveFontSize },
+            }
+          ]
+        );
+
+        const edges = new DataSet(
+          [
+            ...dfg.dfgs[idx].map(({ from, to, freq }) => ({
+              from, to, freq,
+              label: showEdgeLabels ? String(freq) : undefined,
+              font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
+              width: Math.min((freq*1.1 + 0.3),3.5),
+              arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+              smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
+            })),
+            ...startNodes.map(node => ({
+              from: "START",
+              to: node,
+              dashes: true, // Add dashed lines for connections from START node,
+              arrows: { to: { enabled: true, scaleFactor: 0.5 } } ,// Add arrows for connections from START
+              width: 2,
+              smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 } // Slight offset to prevent overlap
+            })),
+            ...endNodes.map(node => ({
+              from: node,
+              to: "END",
+              color: "#97c2fc",
+              dashes: true, // Add dashed lines for connections from END node
+              arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Add arrows for connections from START
+              width: 2,
+              smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 } // Slight offset to prevent overlap
+            }))
+          ]
+        );
+
+        renderDFG(nodes, edges, containerRefs.current[name], name);
+      });
+
+      if (selectedLogs.length > 1) {
+        if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
+
+        const mergedStartNodes = new Set();
+        const mergedEndNodes = new Set();
+
+        selectedLogs.forEach(name => {
+          const idx = dfg.log_names.indexOf(name);
+          dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
+          dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
+        });
+
+        const mergedNodes = new DataSet(
+          [
+            ...dfg.nodes.map(n => ({
+              id: n,
+              label: n,
+              color: getNodeColor(dfg.stats[n], true),
+              size: effectiveNodeSize,
+              font: { color: "#111", size: readableMode ? 20 : 18 },
+              shape: "box"
+            })),
+            {
+              id: "START",
+              label: "START",
+              shape: "triangle", // Triangle shape for START node
+              size: effectiveNodeSize,
+              font: { color: "#111", size: readableMode ? 20 : 18 }
+            },
+            {
+              id: "END",
+              label: "END",
+              shape: "box", // Box shape for END node
+              size: effectiveNodeSize,
+              font: { color: "#111", size: readableMode ? 20 : 18 }
+            }
+          ]
+        );
+
+        const mergedEdgesMap = {};
+        dfg.dfgs.forEach((logDfg, idx) => {
+          const logName = dfg.log_names[idx];
+          if (!selectedLogs.includes(logName)) return;
+          logDfg.forEach(({ from, to, freq }) => {
+            const key = `${from}->${to}`;
+            const revKey = `${to}->${from}`;
+            if (mergedEdgesMap[key] || mergedEdgesMap[revKey]) return; // skip reverse
+            mergedEdgesMap[key] = (mergedEdgesMap[key] || 0) + freq;
+          });
+        });
+
+        const mergedEdges = new DataSet(
+          [
+            ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
+              const [from, to] = k.split("->");
+              return {
+                from, to, freq,
+                label: showEdgeLabels ? String(freq) : undefined,
+                font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
+                width: Math.min(freq * 1.1 + 0.3, 3.5),
+                arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+                smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1)},  // Add small random variation to the offset}
+              };
+            }),
+            ...Array.from(mergedStartNodes).map(node => ({
+              from: "START",
+              to: node,
+              dashes: true, // Add dashed lines for connections from START node
+              width: 2,
+              arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Arrows added to dashed edges from START
+                smooth: { type: 'continuous', roundness: 0.7, offset: 1} // Slight offset to prevent overlap
+            })),
+            ...Array.from(mergedEndNodes).map(node => ({
+              from: node,
+              to: "END",
+              dashes: true, // Add dashed lines for connections from END node
+              width: 2,
+              color: "#97c2fc",
+              arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Arrows added to dashed edges from END
+              smooth: { type: 'continuous', roundness: 0.9, offset: 1 } // Slight offset to prevent overlap
+            }))
+          ]
+        );
+
+        renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
+      }
+    }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode]);
+
+  // ---------------- Log / Variant Toggle Logic ----------------
   const toggleLog = logName => setSelectedLogs(prev => prev.includes(logName) ? prev.filter(l => l !== logName) : [...prev, logName]);
 
   const toggleVariant = async (key) => {
@@ -337,10 +344,14 @@ useEffect(() => {
     if (effect_size <= 0.5) return "#ffbe76";     // orange
     return highlightColor;                         // red
   };
+
   const renderDFG = (nodes, edges, ref, logName) => {
   if (!ref.current) return;
-  if (networkInstances.current[logName]) networkInstances.current[logName].destroy();
+  // Force canvas reset safely
+
+  if (networkInstances.current[logName]) networkInstances.current[logName].destroy(); 
   ref.current.innerHTML = "";
+
 
   // Get all nodes as an array from the DataSet
   const allNodes = nodes.get();
@@ -368,7 +379,7 @@ useEffect(() => {
 
   const network = new Network(ref.current, { nodes: new DataSet(filteredNodes), edges }, {
     physics: { enabled: physicsEnabled, barnesHut: { springLength: 250, centralGravity: 0.3, avoidOverlap: 2 } },
-    edges: { smooth: true }, // force straight
+
     nodes: { shape: "dot"},
     layout: { improvedLayout: true },
     interaction: { hover: true}
@@ -534,22 +545,14 @@ network.on("click", params => {
 
       {/* Interface before & after file upload*/}
       {!files.length ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: "100vh", gap: 20, color: "#333" }}
-        >
-          <motion.h1 initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ duration: 0.6 }} style={{ fontWeight: 700, fontSize: 28 }}>
-            Multi-Log DFG Dashboard
-          </motion.h1>
-          <motion.input type="file" multiple accept=".csv" onChange={handleFileChange}
-            style={{ padding: 14, borderRadius: 14, border: "1px solid #ccc", background: "#fff", cursor: "pointer", fontWeight: 600, boxShadow: "0 8px 20px rgba(0,0,0,0.08)" }}
-            whileHover={{ scale: 1.02 }}
-          />
-        </motion.div>
+        <div style={{ position: "relative", width: "100%", height: "100vh" }}>
+      <AnimatePresence mode="wait">
+        {steps.map((s, i) => i === step && s)}
+      </AnimatePresence>
+    </div>
       ) : (
         <div style={{ display: "flex", minHeight: "100vh" }}>
+          {/* Sidebar */}
           <motion.div
             initial={{ width: 0 }}
             animate={{ width: sidebarOpen ? '50vw' : 0, padding: sidebarOpen ? 20 : 0, opacity: sidebarOpen ? 1 : 0 }}
@@ -599,7 +602,9 @@ network.on("click", params => {
             </div>
           </button>
 
+          {/* Main content area */}
           <div style={{ flex: 1, padding: 30, overflowY: "auto" }}>
+            
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h1 style={{ fontWeight: 700, fontSize: 22 }}>Dashboard</h1>
               <button onClick={() => setSettingsOpen(true)} aria-label="Open settings" title="Settings" style={{ padding: 8, borderRadius: 10, background: 'transparent', color: 'inherit', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' }}>
@@ -617,12 +622,13 @@ network.on("click", params => {
             {selectedLogs.map(name => (
               <div key={name} style={{ marginBottom: 30 }}>
                 <h2 style={{ fontWeight: 700, fontSize: 16 }}>{name} DFG</h2>
-                <div id={`dfg_${name}`} style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
+                <div id={`dfg_${name}`}  style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
               </div>
             ))}
 
             {dfg && <StatsDashboard stats={dfg.stats} edge_stats={dfg.edge_stats} />}
           </div>
+
         </div>
       )}
       

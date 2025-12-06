@@ -35,6 +35,7 @@ export const useDfgState = () => {
   const [settingsOpen, setSettingsOpen] = useState(false); // Declare settingsOpen
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const [step, setStep] = useState(0);
   return {
     files,
     setFiles,
@@ -74,7 +75,9 @@ export const useDfgState = () => {
     settingsOpen,
     setSettingsOpen,
     sidebarOpen,
-    setSidebarOpen
+    setSidebarOpen,
+    step,
+    setStep,
   };
 };
 
