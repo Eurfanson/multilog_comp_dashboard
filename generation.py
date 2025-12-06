@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def generate_event_log(filename, num_cases=20, events_per_case=5, activity_bias=None, time_range=(0, 10000)):
+def generate_event_log(filename, num_cases=10, events_per_case=3, activity_bias=None, time_range=(0, 10000)):
     np.random.seed(None)  # different seed each run
     activities = ["Approve Request", "Quality Check", "Submit Request", 
                   "Reject Request",  "Notify Completion"]
