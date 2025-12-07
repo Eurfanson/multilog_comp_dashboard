@@ -41,7 +41,7 @@ const NodeBubble = ({ nodeBubble, significance }) => {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(4, auto)",
+                gridTemplateColumns: "repeat(5, auto)",
                 gap: 8,
                 alignItems: "center",
                 fontSize: 12,
@@ -51,6 +51,7 @@ const NodeBubble = ({ nodeBubble, significance }) => {
               <div style={{ fontWeight: 700, color: "#000" }}>Test Statistic</div>
               <div style={{ fontWeight: 700, color: "#000" }}>p-value</div>
               <div style={{ fontWeight: 700, color: "#000" }}>Effect Size</div>
+              <div style={{ fontWeight: 700, color: "#000" }}>Node frequency</div>
 
               <div style={{ gridColumn: "1 / 2", color: "#000" }}>
                 {nodeBubble.stats.test ?? "-"}
@@ -76,8 +77,11 @@ const NodeBubble = ({ nodeBubble, significance }) => {
                   ? nodeBubble.stats.effect_size.toFixed(3)
                   : "-"}
               </div>
+              <div style={{ gridColumn: "5 / 6", color: "#000" }}>
+                {nodeBubble.frequency ?? "-"}
+              </div>
 
-              <div style={{ gridColumn: "1 / 5", marginTop: 8, fontSize: 12, color: "#111" }}>
+              <div style={{ gridColumn: "1 / 6", marginTop: 8, fontSize: 12, color: "#111" }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Post-hoc</div>
                 <div
                   style={{

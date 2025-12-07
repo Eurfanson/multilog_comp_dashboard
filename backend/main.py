@@ -8,6 +8,7 @@ from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from scipy.stats import shapiro, kruskal, f_oneway, ttest_ind
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import scikit_posthocs as sp
+from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI()
 
@@ -170,15 +171,24 @@ async def dfg_multi(
             logs.append(log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG))
             names.append(file.filename)
 
-        # Extract variants (keep original behavior)
-        all_variants, trace_keys_all = [], []
-        for df in dfs:
-            df['prev_act'] = df.groupby('case:concept:name')['concept:name'].shift(1).fillna('start')
-            for seq in df.groupby('case:concept:name')['concept:name'].agg(list):
-                seq_tuple = tuple(seq)
-                trace_keys_all.append(seq_tuple)
-                if seq_tuple not in [v["sequence"] for v in all_variants]:
-                    all_variants.append({"sequence": seq_tuple, "key": "|".join(seq_tuple)})
+# ----------------- Optimized Variant Extraction -----------------
+            all_variants, trace_keys_all = [], []
+
+            for df in dfs:
+                # Add previous activity (keep your original)
+                df['prev_act'] = df.groupby('case:concept:name')['concept:name'].shift(1).fillna('start')
+
+                # Extract sequences per case
+                sequences = df.groupby('case:concept:name')['concept:name'].agg(list).tolist()
+                trace_keys_all.extend(tuple(seq) for seq in sequences)
+
+            # Use set to speed up duplicate checking
+            seen_sequences = set()
+            for seq in trace_keys_all:
+                if seq not in seen_sequences:
+                    all_variants.append({"sequence": seq, "key": "|".join(seq)})
+                    seen_sequences.add(seq)
+
 
         # Filter variants if needed
         if selected_variants_raw:
@@ -209,7 +219,14 @@ async def dfg_multi(
         # Node frequency per log
         freq_dict = {}
         for node in nodes:
-            per_log_lists = [df.groupby('case:concept:name')['concept:name'].apply(lambda x: (x == node).sum()).tolist() for df in dfs]
+            per_log_lists = [
+                df.groupby('case:concept:name')['concept:name']
+                .apply(lambda x: int((x == node).sum()))  # 强制转 int
+                .tolist()
+                for df in dfs
+            ]
+            # 转成原生列表（防止 numpy 类型）
+            per_log_lists = [list(map(int, l)) for l in per_log_lists]
             freq_dict[node] = per_log_lists
 
         # Mpde Statistical Tests
@@ -393,6 +410,7 @@ async def dfg_multi(
 
         return {
             "nodes": nodes,
+            "node_freq": freq_dict,
             "dfgs": dfgs_json,
             "dfgs_start_nodes": dfgs_start_nodes,
             "dfgs_end_nodes": dfgs_end_nodes,

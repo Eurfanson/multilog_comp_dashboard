@@ -12,6 +12,7 @@ export const useDfgState = () => {
   const [significance, setSignificance] = useState(0.05);
   const [significanceInput, setSignificanceInput] = useState("0.05");
   const [nodeColor, setNodeColor] = useState("#55efc4");
+  const [nodeFreq, setNodeFreq] = useState({});
   const [highlightColor, setHighlightColor] = useState("#ff3b30");
   const [readableMode, setReadableMode] = useState(false);
 
@@ -26,7 +27,8 @@ export const useDfgState = () => {
   logName: null,
   fromNode: null,  // Add fromNode
   toNode: null,    // Add toNode
-  frequency: null  // Add frequency
+  frequency: null,  // Add frequency
+  
 });
 
   const edgeBubbleRef = useRef(edgeBubble);
@@ -78,6 +80,8 @@ export const useDfgState = () => {
     setSidebarOpen,
     step,
     setStep,
+    nodeFreq, 
+    setNodeFreq
   };
 };
 

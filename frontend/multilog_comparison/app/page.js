@@ -23,7 +23,7 @@ export default function Home() {
     significanceInput, setSignificanceInput, nodeColor, setNodeColor,
     highlightColor, setHighlightColor, readableMode, setReadableMode,
     containerRefs, networkInstances, nodePositions, edgeBubble, setEdgeBubble,
-    edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen,step, setStep
+    edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen,step, setStep, nodeFreq, setNodeFreq
   } = useDfgState();
 
     const handleFileChange = async e => {
@@ -169,7 +169,7 @@ export default function Home() {
               label: n,
               color: nodeColor,
               size: effectiveNodeSize,
-              font: { color: "#111", size: effectiveFontSize },
+              font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
               shape: "box",
             })),
             {
@@ -234,14 +234,17 @@ export default function Home() {
           dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
         });
 
+        console.log("Node frequencies111:", dfg.node_freq);
+
         const mergedNodes = new DataSet(
           [
             ...dfg.nodes.map(n => ({
               id: n,
               label: n,
               color: getNodeColor(dfg.stats[n], true),
-              size: effectiveNodeSize,
-              font: { color: "#111", size: readableMode ? 20 : 18 },
+              size: effectiveNodeSize, 
+              font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
+
               shape: "box"
             })),
             {
@@ -281,7 +284,7 @@ export default function Home() {
                 from, to, freq,
                 label: showEdgeLabels ? String(freq) : undefined,
                 font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-                width: Math.min(freq * 1.1 + 0.3, 3.5),
+                width: Math.min(freq * 2 + 0.1, 8),
                 arrows: { to: { enabled: true, scaleFactor: 0.7 } },
                 smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1)},  // Add small random variation to the offset}
               };
@@ -414,8 +417,9 @@ network.on("click", params => {
       const rect = canvasElem?.getBoundingClientRect() || ref.current.getBoundingClientRect();
       const bubbleX = rect.left + midDOM.x;
       const bubbleY = rect.top + midDOM.y + 10;
+      const frequency = dfg.node_freq?.[nodeId]?.flat().reduce((a, b) => a + b, 0) ?? 0;
 
-      setNodeBubble({ visible: true, node: nodeId, stats: statsRow, x: bubbleX, y: bubbleY, logName });
+      setNodeBubble({ visible: true, node: nodeId, stats: statsRow, x: bubbleX, y: bubbleY, logName,frequency });
       
 
       return;
