@@ -4,7 +4,8 @@ import GithubProvider from "next-auth/providers/github";
 
 // list of GitHub usernames allowed to log in
 const allowedIds = [
-  126807919,      // you
+  126807919,         // you
+  210891881,
   "sapluoist",       // 1 person
   "KaanIrfanoglu",   // exact username
   "Eurfanson"        // second username for same person

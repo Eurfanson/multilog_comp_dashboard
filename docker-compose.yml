@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: multilog_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app/backend
+    networks:
+      - multilog_network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend/multilog_comparison
+      dockerfile: Dockerfile
+      args:
+        NEXTAUTH_URL: http://localhost:3000
+        NEXTAUTH_SECRET: iS2qJpW9eJX7tLZqS4v8bKx1zP0rDf3mX8aQh7N9oU2cV6eF
+        GITHUB_ID: Ov23liBRsQHnrA9pSBJN
+        GITHUB_SECRET: 4eff7b0ae26acc9d6176ac2e06e7ef102a03d9f2
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: multilog_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=iS2qJpW9eJX7tLZqS4v8bKx1zP0rDf3mX8aQh7N9oU2cV6eF
+      - GITHUB_ID=Ov23liBRsQHnrA9pSBJN
+      - GITHUB_SECRET=4eff7b0ae26acc9d6176ac2e06e7ef102a03d9f2
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - multilog_network
+    # For development with hot reload, uncomment below and comment out CMD in Dockerfile
+    # command: npm run dev
+
+networks:
+  multilog_network:
+    driver: bridge
