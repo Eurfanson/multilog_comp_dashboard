@@ -167,6 +167,12 @@ async def dfg_multi(
                 raise HTTPException(status_code=400, detail=f"Invalid timestamps in {file.filename}")
 
             df = df.sort_values(["case:concept:name", "time:timestamp"]).reset_index(drop=True)
+            # ---- elapsed time since case start ----
+            df["case_start_time"] = df.groupby("case:concept:name")["time:timestamp"].transform("min")
+            df["elapsed_time"] = (
+                df["time:timestamp"] - df["case_start_time"]
+            ).dt.total_seconds()
+
             dfs.append(df.copy())
             logs.append(log_converter.apply(df, variant=log_converter.Variants.TO_EVENT_LOG))
             names.append(file.filename)
@@ -221,15 +227,111 @@ async def dfg_multi(
         for node in nodes:
             per_log_lists = [
                 df.groupby('case:concept:name')['concept:name']
-                .apply(lambda x: int((x == node).sum()))  # 强制转 int
+                .apply(lambda x: int((x == node).sum()))  #  int
                 .tolist()
                 for df in dfs
             ]
-            # 转成原生列表（防止 numpy 类型）
+            #avoid numpy type issues
             per_log_lists = [list(map(int, l)) for l in per_log_lists]
             freq_dict[node] = per_log_lists
+            
+        # ---------------- Elapsed Time per Node ----------------
+        elapsed_dict = {}
 
-        # Mpde Statistical Tests
+        for node in nodes:
+            per_log_lists = []
+            for df in dfs:
+                times = (
+                    df[df["concept:name"] == node]
+                    .groupby("case:concept:name")["elapsed_time"]
+                    .mean()   # choose mean / median / min
+                    .tolist()
+                    )
+                per_log_lists.append(times)
+
+            elapsed_dict[node] = per_log_lists
+
+        # ---------------- Node Statistical Tests for elapsed time ----------------
+        def compute_node_stats(per_node_dict):
+            stats_result = {}
+            alpha, min_total_count = 0.05, 3
+
+            for node, lists_per_log in per_node_dict.items():
+                valid = [lst for lst in lists_per_log if len(lst) > 0]
+                k = len(valid)
+
+                if k < 2:
+                    stats_result[node] = {
+                        "stat": None,
+                        "p_value": 1,
+                        "effect_size": None,
+                        "test": None,
+                        "posthoc": None
+                    }
+                    continue
+
+                n_total = sum(len(lst) for lst in valid)
+                all_vals = [v for lst in valid for v in lst]
+                normal = len(all_vals) >= 8 and shapiro(all_vals)[1] > 0.05
+
+                stat, p, effect_size = None, None, None
+                posthoc_res = None
+                test_name = None
+
+                if k == 2:
+                    if normal:
+                        stat, p = ttest_ind(*valid, equal_var=False)
+                        effect_size = eta_squared_anova(stat, 1, n_total - 2)
+                        test_name = "t-test"
+                    else:
+                        stat, p = kruskal(*valid)
+                        effect_size = epsilon_squared_kruskal(stat, n_total, k)
+                        test_name = "Kruskal-Wallis"
+                        try:
+                            df_post = sp.posthoc_dunn(valid, p_adjust="bonferroni")
+                            posthoc_res = df_post if isinstance(df_post, pd.DataFrame) else df_post.to_dict()
+                        except Exception:
+                            posthoc_res = None
+                else:
+                    if normal:
+                        stat, p = f_oneway(*valid)
+                        effect_size = eta_squared_anova(stat, k - 1, n_total - k)
+                        test_name = "ANOVA"
+                        try:
+                            all_vals_flat, group_labels = [], []
+                            for i, lst in enumerate(valid):
+                                all_vals_flat.extend(lst)
+                                group_labels.extend([i] * len(lst))
+                            tukey = pairwise_tukeyhsd(all_vals_flat, group_labels, alpha=0.05)
+                            tukey_rows = tukey.summary().data[1:]
+                            tukey_dict = {}
+                            for row in tukey_rows:
+                                g1, g2, pval = int(row[0]), int(row[1]), float(row[3])
+                                tukey_dict.setdefault(g2, {})[g1] = pval
+                            posthoc_res = tukey_dict
+                        except Exception:
+                            posthoc_res = None
+                    else:
+                        stat, p = kruskal(*valid)
+                        effect_size = epsilon_squared_kruskal(stat, n_total, k)
+                        test_name = "Kruskal-Wallis"
+                        try:
+                            df_post = sp.posthoc_dunn(valid, p_adjust="bonferroni")
+                            posthoc_res = df_post if isinstance(df_post, pd.DataFrame) else df_post.to_dict()
+                        except Exception:
+                            posthoc_res = None
+
+                stats_result[node] = {
+                    "stat": safe_float(stat),
+                    "p_value": safe_float(p),
+                    "effect_size": safe_float(effect_size),
+                    "test": test_name,
+                    "posthoc": format_posthoc_simple(posthoc_res, valid)
+                }
+
+            return stats_result
+
+        # Node Statistical Tests for Frequencies
         stats_result = {}
         alpha, min_total_count = 0.05, 3
 
@@ -318,7 +420,7 @@ async def dfg_multi(
                 "posthoc": format_posthoc_simple(posthoc_res, valid)
             }
 
-        
+        stats_elapsed = compute_node_stats(elapsed_dict)
         # Merge DFGs
         merged_dfg = {}
         for d in dfgs:
@@ -415,6 +517,7 @@ async def dfg_multi(
             "dfgs_start_nodes": dfgs_start_nodes,
             "dfgs_end_nodes": dfgs_end_nodes,
             "stats": stats_result,
+            "stats_elapsed": stats_elapsed,
             "edge_stats": edge_stats_result,
             "log_names": names,
             "merged_dfg": merged_dfg_json,

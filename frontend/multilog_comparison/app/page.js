@@ -24,8 +24,11 @@ export default function Home() {
     highlightColor, setHighlightColor, readableMode, setReadableMode,
     containerRefs, networkInstances, nodePositions, edgeBubble, setEdgeBubble,
     edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen,step, setStep, nodeFreq, setNodeFreq,logPage,
-    setLogPage
+    setLogPage, metrics, setMetrics
   } = useDfgState();
+
+    //const [metrics, setMetrics] = useState("frequency"); // "frequency" or "elapsed"
+
 
     const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
@@ -235,14 +238,14 @@ export default function Home() {
           dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
         });
 
-        console.log("Node frequencies111:", dfg.node_freq);
-
+        //console.log("Node frequencies111:", dfg.node_freq);
+        
         const mergedNodes = new DataSet(
           [
             ...dfg.nodes.map(n => ({
               id: n,
               label: n,
-              color: getNodeColor(dfg.stats[n], true),
+              color: getNodeColor(metrics === "elapsed" ? dfg.stats_elapsed[n] : dfg.stats[n], true),
               size: effectiveNodeSize, 
               font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
 
@@ -312,7 +315,7 @@ export default function Home() {
 
         renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
       }
-    }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode]);
+    }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode, metrics]);
 
   // ---------------- Log / Variant Toggle Logic ----------------
   const toggleLog = logName => setSelectedLogs(prev => prev.includes(logName) ? prev.filter(l => l !== logName) : [...prev, logName]);
@@ -677,7 +680,7 @@ if (dfg?.nodes) {
               </div>
             ))}
 
-            {dfg && <StatsDashboard stats={dfg.stats} edge_stats={dfg.edge_stats} />}
+            {dfg && <StatsDashboard stats={metrics === "frequency" ? dfg.stats : dfg.stats_elapsed} edge_stats={dfg.edge_stats} />}
           </div>
 
         </div>
@@ -702,6 +705,8 @@ if (dfg?.nodes) {
         setHighlightColor={setHighlightColor}
         readableMode={readableMode}
         setReadableMode={setReadableMode}
+        metrics={metrics}                
+        setMetrics={setMetrics}          
       />
     </div>
   );

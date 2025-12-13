@@ -19,7 +19,9 @@ export default function SettingsOverlay({
   highlightColor,
   setHighlightColor,
   readableMode,
-  setReadableMode
+  setReadableMode,
+  metrics,          // <- 新增
+  setMetrics        // <- 新增
 }) {
   return (
     <AnimatePresence>
@@ -63,7 +65,7 @@ export default function SettingsOverlay({
             <button onClick={() => setSettingsOpen(false)} style={{ position: "absolute", top: 20, right: 20, background: "none", border: "none", fontSize: 20, cursor: "pointer" }}>✕</button>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {/* Inputs with temporary string states */}
+              {/* Significance Threshold */}
               <label>Significance Threshold
                 <input
                   type="text"
@@ -80,6 +82,7 @@ export default function SettingsOverlay({
                 />
               </label>
 
+              {/* Node Size */}
               <label>Node Size
                 <input
                   type="text"
@@ -96,6 +99,7 @@ export default function SettingsOverlay({
                 />
               </label>
 
+              {/* Edge Width */}
               <label>Edge Width
                 <input
                   type="text"
@@ -112,13 +116,15 @@ export default function SettingsOverlay({
                 />
               </label>
 
+              {/* Node Colors */}
               <label>Normal Node Color
                 <input type="color" value={nodeColor} onChange={e => setNodeColor(e.target.value)} style={{ width: "100%" }} />
               </label>
-
               <label>Highlight Node Color
                 <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: "100%" }} />
               </label>
+
+              {/* Readable Mode */}
               <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <input
                   type="checkbox"
@@ -127,6 +133,15 @@ export default function SettingsOverlay({
                 />
                 Enable Readable DFG Mode
               </label>
+
+              {/* Metrics Selection */}
+              <label style={{ marginTop: 10 }}>Metrics:
+                <select value={metrics} onChange={(e) => setMetrics(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}>
+                  <option value="frequency">Frequency</option>
+                  <option value="elapsed">Elapsed Time</option>
+                </select>
+              </label>
+
             </div>
           </motion.div>
         </motion.div>

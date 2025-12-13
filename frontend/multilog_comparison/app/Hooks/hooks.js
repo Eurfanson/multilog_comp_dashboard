@@ -39,6 +39,7 @@ export const useDfgState = () => {
 
   const [step, setStep] = useState(0);
   const [logPage, setLogPage] = useState(0); 
+  const [metrics, setMetrics] = useState("frequency"); // "frequency" or "elapsed"
   return {
     files,
     setFiles,
@@ -84,7 +85,9 @@ export const useDfgState = () => {
     nodeFreq, 
     setNodeFreq,
     logPage,
-    setLogPage
+    setLogPage,
+    metrics,
+    setMetrics
   };
 };
 
