@@ -38,6 +38,7 @@ export const useDfgState = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [step, setStep] = useState(0);
+  const [logPage, setLogPage] = useState(0); 
   return {
     files,
     setFiles,
@@ -81,7 +82,9 @@ export const useDfgState = () => {
     step,
     setStep,
     nodeFreq, 
-    setNodeFreq
+    setNodeFreq,
+    logPage,
+    setLogPage
   };
 };
 

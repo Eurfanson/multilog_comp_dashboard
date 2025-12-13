@@ -23,7 +23,8 @@ export default function Home() {
     significanceInput, setSignificanceInput, nodeColor, setNodeColor,
     highlightColor, setHighlightColor, readableMode, setReadableMode,
     containerRefs, networkInstances, nodePositions, edgeBubble, setEdgeBubble,
-    edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen,step, setStep, nodeFreq, setNodeFreq
+    edgeBubbleRef, nodeBubble, setNodeBubble, nodeBubbleRef,settingsOpen, setSettingsOpen,sidebarOpen, setSidebarOpen,step, setStep, nodeFreq, setNodeFreq,logPage,
+    setLogPage
   } = useDfgState();
 
     const handleFileChange = async e => {
@@ -538,6 +539,18 @@ network.on("click", params => {
     network.on(event, () => repositionNodeBubble());
   });
 };
+ const logsPerPage = 3;
+ const totalPages = Math.ceil(files.length / logsPerPage);
+  const paginatedLogs = files.slice(logPage * logsPerPage, (logPage + 1) * logsPerPage);
+
+  //color palette for variant steps
+const nodeColorMap = {};
+if (dfg?.nodes) {
+  dfg.nodes.forEach((n) => {
+    nodeColorMap[n] = getNodeColor(dfg.stats[n], true);
+  });
+}
+
 
   return (
     <div style={{ minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif", background: "#f3f3f7" }}>
@@ -564,16 +577,50 @@ network.on("click", params => {
             style={{ position: 'fixed', left: 0, top: 0, height: '100vh', background: '#fff', borderRadius: '0 20px 20px 0', boxShadow: sidebarOpen ? '4px 0 30px rgba(0,0,0,0.05)' : 'none', overflow: 'hidden', zIndex: 1000 }}
           >
             {sidebarOpen && (
-              <div style={{ height: '100vh', overflowY: 'auto' }}>
-                <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>Logs</h3>
-                {files.map(f => (
-                  <label key={f.name} style={{ display: "block", marginBottom: 10, cursor: "pointer" }}>
-                    <input type="checkbox" checked={selectedLogs.includes(f.name)} onChange={() => toggleLog(f.name)} style={{ marginRight: 8 }} />
-                    {f.name}
-                  </label>
-                ))}
-                <VariantBarCharts variants={dfg?.variants} logNames={selectedLogs} selectedVariants={selectedVariants} onToggleVariant={toggleVariant} />
-              </div>
+              <div style={{ height: '100vh', overflowY: 'auto', paddingRight: 12 }}>
+                    <h3 style={{ marginBottom: 20, fontWeight: 700, fontSize: 16 }}>Logs</h3>
+
+                    {paginatedLogs.map(f => (
+                      <label key={f.name} style={{ display: "block", marginBottom: 10, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedLogs.includes(f.name)}
+                          onChange={() => toggleLog(f.name)}
+                          style={{ marginRight: 8 }}
+                        />
+                        {f.name}
+                      </label>
+                    ))}
+
+                    {/* Pagination buttons */}
+                    {files.length > logsPerPage && (
+                      <div style={{ display: 'flex', justifyContent: 'flex-start', gap: 6, marginBottom: 20 }}>
+                        <button
+                          disabled={logPage === 0}
+                          onClick={() => setLogPage(logPage - 1)}
+                          style={{ padding:'4px 10px', borderRadius:4, border:'1px solid #ccc', cursor: logPage===0?'not-allowed':'pointer' }}
+                        >
+                          Prev
+                        </button>
+                        <span style={{ fontSize:12, alignSelf:'center' }}>{logPage + 1}/{totalPages}</span>
+                        <button
+                          disabled={logPage === totalPages - 1}
+                          onClick={() => setLogPage(logPage + 1)}
+                          style={{ padding:'4px 10px', borderRadius:4, border:'1px solid #ccc', cursor: logPage===totalPages-1?'not-allowed':'pointer' }}
+                        >
+                          Next
+                        </button>
+                      </div>
+                    )}
+
+                    <VariantBarCharts
+                      variants={dfg?.variants}
+                      logNames={selectedLogs}
+                      selectedVariants={selectedVariants}
+                      onToggleVariant={toggleVariant}
+                      nodeColors={nodeColorMap}
+                    />
+                  </div>
             )}
           </motion.div>
 
