@@ -1,5 +1,5 @@
 // SettingsOverlay.jsx
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function SettingsOverlay({
@@ -20,9 +20,27 @@ export default function SettingsOverlay({
   setHighlightColor,
   readableMode,
   setReadableMode,
-  metrics,          // <- 新增
-  setMetrics        // <- 新增
+  metrics,
+  setMetrics
 }) {
+  const innerRef = useRef(null);
+
+  // Detect clicks outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (innerRef.current && !innerRef.current.contains(e.target)) {
+        setSettingsOpen(false);
+      }
+    };
+
+    if (settingsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [settingsOpen, setSettingsOpen]);
+
   return (
     <AnimatePresence>
       {settingsOpen && (
@@ -31,46 +49,61 @@ export default function SettingsOverlay({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           style={{
-            position: "fixed",
+            position: 'fixed',
             top: 0,
             left: 0,
-            width: "100%",
-            height: "100%",
-            background: "rgba(0,0,0,0.3)",
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.3)',
             zIndex: 50,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
             padding: 20,
-            overflowY: "auto"
+            overflowY: 'auto'
           }}
         >
           <motion.div
+            ref={innerRef} // <-- CHANGED: inner box ref
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.95 }}
             transition={{ duration: 0.3 }}
             style={{
-              width: "480px",
-              maxHeight: "90vh",
+              width: '480px',
+              maxHeight: '90vh',
               padding: 40,
               borderRadius: 20,
-              background: "#fff",
-              boxShadow: "0 16px 48px rgba(0,0,0,0.15)",
-              overflowY: "auto",
-              position: "relative"
+              background: '#fff',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.15)',
+              overflowY: 'auto',
+              position: 'relative'
             }}
           >
             <h2 style={{ marginBottom: 24, fontWeight: 700, fontSize: 20 }}>Settings</h2>
-            <button onClick={() => setSettingsOpen(false)} style={{ position: "absolute", top: 20, right: 20, background: "none", border: "none", fontSize: 20, cursor: "pointer" }}>✕</button>
+            <button
+              onClick={() => setSettingsOpen(false)}
+              style={{
+                position: 'absolute',
+                top: 20,
+                right: 20,
+                background: 'none',
+                border: 'none',
+                fontSize: 20,
+                cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* Significance Threshold */}
-              <label>Significance Threshold
+              <label>
+                Significance Threshold
                 <input
                   type="text"
                   value={significanceInput}
-                  onChange={e => setSignificanceInput(e.target.value)}
+                  onChange={(e) => setSignificanceInput(e.target.value)}
                   onBlur={() => {
                     let val = parseFloat(significanceInput);
                     if (isNaN(val)) val = 0.05;
@@ -78,16 +111,17 @@ export default function SettingsOverlay({
                     setSignificance(val);
                     setSignificanceInput(val.toString());
                   }}
-                  style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
                 />
               </label>
 
               {/* Node Size */}
-              <label>Node Size
+              <label>
+                Node Size
                 <input
                   type="text"
                   value={nodeSizeInput}
-                  onChange={e => setNodeSizeInput(e.target.value)}
+                  onChange={(e) => setNodeSizeInput(e.target.value)}
                   onBlur={() => {
                     let val = parseInt(nodeSizeInput);
                     if (isNaN(val)) val = 22;
@@ -95,16 +129,17 @@ export default function SettingsOverlay({
                     setNodeSize(val);
                     setNodeSizeInput(val.toString());
                   }}
-                  style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
                 />
               </label>
 
               {/* Edge Width */}
-              <label>Edge Width
+              <label>
+                Edge Width
                 <input
                   type="text"
                   value={edgeWidthInput}
-                  onChange={e => setEdgeWidthInput(e.target.value)}
+                  onChange={(e) => setEdgeWidthInput(e.target.value)}
                   onBlur={() => {
                     let val = parseInt(edgeWidthInput);
                     if (isNaN(val)) val = 2;
@@ -112,20 +147,22 @@ export default function SettingsOverlay({
                     setEdgeWidth(val);
                     setEdgeWidthInput(val.toString());
                   }}
-                  style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
                 />
               </label>
 
               {/* Node Colors */}
-              <label>Normal Node Color
-                <input type="color" value={nodeColor} onChange={e => setNodeColor(e.target.value)} style={{ width: "100%" }} />
+              <label>
+                Normal Node Color
+                <input type="color" value={nodeColor} onChange={(e) => setNodeColor(e.target.value)} style={{ width: '100%' }} />
               </label>
-              <label>Highlight Node Color
-                <input type="color" value={highlightColor} onChange={e => setHighlightColor(e.target.value)} style={{ width: "100%" }} />
+              <label>
+                Highlight Node Color
+                <input type="color" value={highlightColor} onChange={(e) => setHighlightColor(e.target.value)} style={{ width: '100%' }} />
               </label>
 
               {/* Readable Mode */}
-              <label style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input
                   type="checkbox"
                   checked={readableMode}
@@ -135,13 +172,17 @@ export default function SettingsOverlay({
               </label>
 
               {/* Metrics Selection */}
-              <label style={{ marginTop: 10 }}>Metrics:
-                <select value={metrics} onChange={(e) => setMetrics(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ccc" }}>
+              <label style={{ marginTop: 10 }}>
+                Metrics:
+                <select
+                  value={metrics}
+                  onChange={(e) => setMetrics(e.target.value)}
+                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
+                >
                   <option value="frequency">Frequency</option>
                   <option value="elapsed">Elapsed Time</option>
                 </select>
               </label>
-
             </div>
           </motion.div>
         </motion.div>

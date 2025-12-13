@@ -147,175 +147,177 @@ export default function Home() {
   }, [dfg, selectedLogs]);
 
   //vis network rendering logic
-  useEffect(() => {
-      if (!dfg) return;
+useEffect(() => {
+  if (!dfg) return;
 
-      const effectiveNodeSize = readableMode ? Math.max(nodeSize, 28) : nodeSize;
-      const effectiveFontSize = readableMode ? 22 : 18;
-      const effectiveEdgeWidth = readableMode ? Math.max(edgeWidth, 3) : edgeWidth;
-      const showEdgeLabels = readableMode;
+  const effectiveNodeSize = readableMode ? Math.max(nodeSize, 28) : nodeSize;
+  const effectiveFontSize = readableMode ? 22 : 18;
+  const effectiveEdgeWidth = readableMode ? Math.max(edgeWidth, 3) : edgeWidth;
+  const showEdgeLabels = readableMode;
 
-      selectedLogs.forEach(name => {
-        const idx = dfg.log_names.indexOf(name);
-        if (idx === -1) return;
+  // Render each selected log separately
+  selectedLogs.forEach(name => {
+    const idx = dfg.log_names.indexOf(name);
+    if (idx === -1) return;
 
-        if (!containerRefs.current[name]) {
-          containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
+    if (!containerRefs.current[name]) {
+      containerRefs.current[name] = { current: document.getElementById(`dfg_${name}`) };
+    }
+
+    const startNodes = dfg.dfgs_start_nodes?.[idx] || [];
+    const endNodes = dfg.dfgs_end_nodes?.[idx] || [];
+
+    const nodes = new DataSet(
+      [
+        ...dfg.nodes.map(n => ({
+          id: n,
+          label: n,
+          color: nodeColor,
+          size: effectiveNodeSize, // <- now uses settings
+          font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
+          shape: "box",
+        })),
+        {
+          id: "START",
+          label: "START",
+          shape: "triangle",
+          size: effectiveNodeSize,
+          font: { color: "#111", size: effectiveFontSize },
+        },
+        {
+          id: "END",
+          label: "END",
+          shape: "box",
+          size: effectiveNodeSize,
+          font: { color: "#111", size: effectiveFontSize },
         }
+      ]
+    );
 
-        const startNodes = dfg.dfgs_start_nodes?.[idx] || [];
-        const endNodes = dfg.dfgs_end_nodes?.[idx] || [];
+    const edges = new DataSet(
+      [
+        ...dfg.dfgs[idx].map(({ from, to, freq }) => ({
+          from, to, freq,
+          label: showEdgeLabels ? String(freq) : undefined,
+          font: showEdgeLabels ? { size: 20, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
+          width: effectiveEdgeWidth, // <- now uses settings
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+          smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
+        })),
+        ...startNodes.map(node => ({
+          from: "START",
+          to: node,
+          dashes: true,
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+          width: effectiveEdgeWidth,
+          smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 }
+        })),
+        ...endNodes.map(node => ({
+          from: node,
+          to: "END",
+          color: "#97c2fc",
+          dashes: true,
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+          width: effectiveEdgeWidth,
+          smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 }
+        }))
+      ]
+    );
 
-        const nodes = new DataSet(
-          [
-            ...dfg.nodes.map(n => ({
-              id: n,
-              label: n,
-              color: nodeColor,
-              size: effectiveNodeSize,
-              font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
-              shape: "box",
-            })),
-            {
-              id: "START",
-              label: "START",
-              shape: "triangle", // Triangle shape for START node
-              size: effectiveNodeSize,
-              font: { color: "#111", size: effectiveFontSize },
-            },
-            {
-              id: "END",
-              label: "END",
-              shape: "box", // Box shape for END node
-              size: effectiveNodeSize,
-              font: { color: "#111", size: effectiveFontSize },
-            }
-          ]
-        );
+    renderDFG(nodes, edges, containerRefs.current[name], name);
+  });
 
-        const edges = new DataSet(
-          [
-            ...dfg.dfgs[idx].map(({ from, to, freq }) => ({
-              from, to, freq,
-              label: showEdgeLabels ? String(freq) : undefined,
-              font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-              width: Math.min((freq*1.1 + 0.3),3.5),
-              arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-              smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
-            })),
-            ...startNodes.map(node => ({
-              from: "START",
-              to: node,
-              dashes: true, // Add dashed lines for connections from START node,
-              arrows: { to: { enabled: true, scaleFactor: 0.5 } } ,// Add arrows for connections from START
-              width: 2,
-              smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 } // Slight offset to prevent overlap
-            })),
-            ...endNodes.map(node => ({
-              from: node,
-              to: "END",
-              color: "#97c2fc",
-              dashes: true, // Add dashed lines for connections from END node
-              arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Add arrows for connections from START
-              width: 2,
-              smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 } // Slight offset to prevent overlap
-            }))
-          ]
-        );
+  // Merge logs if more than 1
+  if (selectedLogs.length > 1) {
+    if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
 
-        renderDFG(nodes, edges, containerRefs.current[name], name);
+    const mergedStartNodes = new Set();
+    const mergedEndNodes = new Set();
+
+    selectedLogs.forEach(name => {
+      const idx = dfg.log_names.indexOf(name);
+      dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
+      dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
+    });
+
+    const mergedNodes = new DataSet(
+      [
+        ...dfg.nodes.map(n => ({
+          id: n,
+          label: n,
+          color: getNodeColor(metrics === "elapsed" ? dfg.stats_elapsed[n] : dfg.stats[n], true),
+          size: effectiveNodeSize,
+          font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
+          shape: "box"
+        })),
+        {
+          id: "START",
+          label: "START",
+          shape: "triangle",
+          size: effectiveNodeSize,
+          font: { color: "#111", size: effectiveFontSize }
+        },
+        {
+          id: "END",
+          label: "END",
+          shape: "box",
+          size: effectiveNodeSize,
+          font: { color: "#111", size: effectiveFontSize }
+        }
+      ]
+    );
+
+    const mergedEdgesMap = {};
+    dfg.dfgs.forEach((logDfg, idx) => {
+      const logName = dfg.log_names[idx];
+      if (!selectedLogs.includes(logName)) return;
+      logDfg.forEach(({ from, to, freq }) => {
+        const key = `${from}->${to}`;
+        const revKey = `${to}->${from}`;
+        if (mergedEdgesMap[key] || mergedEdgesMap[revKey]) return;
+        mergedEdgesMap[key] = (mergedEdgesMap[key] || 0) + freq;
       });
+    });
 
-      if (selectedLogs.length > 1) {
-        if (!containerRefs.current["merged"]) containerRefs.current["merged"] = { current: document.getElementById("mergedDFG") };
+    const mergedEdges = new DataSet(
+      [
+        ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
+          const [from, to] = k.split("->");
+          return {
+            from, to, freq,
+            label: showEdgeLabels ? String(freq) : undefined,
+            font: showEdgeLabels ? { size: 25, strokeWidth: 3, strokeColor: "#ffffff" ,align: "horizontal", zIndex: 999} : undefined,
+            width: effectiveEdgeWidth, // <- now uses settings
+            arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+            smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1) },
+            // offset label horizontally
+            labelOffset: { x: 10, y: 0 } 
+            
+          };
+        }),
+        ...Array.from(mergedStartNodes).map(node => ({
+          from: "START",
+          to: node,
+          dashes: true,
+          width: effectiveEdgeWidth,
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+          smooth: { type: 'continuous', roundness: 0.7, offset: 1 }
+        })),
+        ...Array.from(mergedEndNodes).map(node => ({
+          from: node,
+          to: "END",
+          dashes: true,
+          width: effectiveEdgeWidth,
+          color: "#97c2fc",
+          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+          smooth: { type: 'continuous', roundness: 0.9, offset: 1 }
+        }))
+      ]
+    );
 
-        const mergedStartNodes = new Set();
-        const mergedEndNodes = new Set();
-
-        selectedLogs.forEach(name => {
-          const idx = dfg.log_names.indexOf(name);
-          dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
-          dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
-        });
-
-        //console.log("Node frequencies111:", dfg.node_freq);
-        
-        const mergedNodes = new DataSet(
-          [
-            ...dfg.nodes.map(n => ({
-              id: n,
-              label: n,
-              color: getNodeColor(metrics === "elapsed" ? dfg.stats_elapsed[n] : dfg.stats[n], true),
-              size: effectiveNodeSize, 
-              font: { color: "#111", size: Math.min(Math.max((dfg.node_freq[n]?.flat().reduce((a,b)=>a+b,0)||1)*1.5, 18), 25) },
-
-              shape: "box"
-            })),
-            {
-              id: "START",
-              label: "START",
-              shape: "triangle", // Triangle shape for START node
-              size: effectiveNodeSize,
-              font: { color: "#111", size: readableMode ? 20 : 18 }
-            },
-            {
-              id: "END",
-              label: "END",
-              shape: "box", // Box shape for END node
-              size: effectiveNodeSize,
-              font: { color: "#111", size: readableMode ? 20 : 18 }
-            }
-          ]
-        );
-
-        const mergedEdgesMap = {};
-        dfg.dfgs.forEach((logDfg, idx) => {
-          const logName = dfg.log_names[idx];
-          if (!selectedLogs.includes(logName)) return;
-          logDfg.forEach(({ from, to, freq }) => {
-            const key = `${from}->${to}`;
-            const revKey = `${to}->${from}`;
-            if (mergedEdgesMap[key] || mergedEdgesMap[revKey]) return; // skip reverse
-            mergedEdgesMap[key] = (mergedEdgesMap[key] || 0) + freq;
-          });
-        });
-
-        const mergedEdges = new DataSet(
-          [
-            ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
-              const [from, to] = k.split("->");
-              return {
-                from, to, freq,
-                label: showEdgeLabels ? String(freq) : undefined,
-                font: showEdgeLabels ? { size: 14, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-                width: Math.min(freq * 2 + 0.1, 8),
-                arrows: { to: { enabled: true, scaleFactor: 0.7 } },
-                smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1)},  // Add small random variation to the offset}
-              };
-            }),
-            ...Array.from(mergedStartNodes).map(node => ({
-              from: "START",
-              to: node,
-              dashes: true, // Add dashed lines for connections from START node
-              width: 2,
-              arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Arrows added to dashed edges from START
-                smooth: { type: 'continuous', roundness: 0.7, offset: 1} // Slight offset to prevent overlap
-            })),
-            ...Array.from(mergedEndNodes).map(node => ({
-              from: node,
-              to: "END",
-              dashes: true, // Add dashed lines for connections from END node
-              width: 2,
-              color: "#97c2fc",
-              arrows: { to: { enabled: true, scaleFactor: 0.5 } }, // Arrows added to dashed edges from END
-              smooth: { type: 'continuous', roundness: 0.9, offset: 1 } // Slight offset to prevent overlap
-            }))
-          ]
-        );
-
-        renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
-      }
-    }, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode, metrics]);
+    renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
+  }
+}, [dfg, selectedLogs, nodeSize, edgeWidth, significance, nodeColor, highlightColor, readableMode, metrics]);
 
   // ---------------- Log / Variant Toggle Logic ----------------
   const toggleLog = logName => setSelectedLogs(prev => prev.includes(logName) ? prev.filter(l => l !== logName) : [...prev, logName]);
