@@ -28,7 +28,8 @@ export default function Home() {
   } = useDfgState();
 
     //const [metrics, setMetrics] = useState("frequency"); // "frequency" or "elapsed"
-
+// Keep this state in your component
+const [layoutKey, setLayoutKey] = useState(0);
 
     const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
@@ -70,81 +71,106 @@ export default function Home() {
  
   useEffect(() => { nodeBubbleRef.current = nodeBubble; }, [nodeBubble]);
 
-  //layout logic
-  useEffect(() => {
-      if (!dfg) return;
 
-      // Check if we have already calculated the node positions
-     nodePositions.current = {}; // force fresh layout
+//layout generation
+useEffect(() => {
+    if (!dfg) return;
 
+    nodePositions.current = {};
 
-      const nodeIds = dfg.nodes || [];
-      if (!nodeIds.length) return;
+    const nodeIds = dfg.nodes || [];
+    if (nodeIds.length === 0) return;
 
-      // Prepare start and end node lists
-      const mergedStartNodes = new Set();
-      const mergedEndNodes = new Set();
+    // Collect start/end nodes from selected logs
+    const mergedStartNodes = new Set();
+    const mergedEndNodes = new Set();
 
-      selectedLogs.forEach(name => {
-          const idx = dfg.log_names.indexOf(name);
-          dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
-          dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
-      });
+    selectedLogs.forEach(name => {
+        const idx = dfg.log_names.indexOf(name);
+        if (idx !== -1) {
+            dfg.dfgs_start_nodes?.[idx]?.forEach(n => mergedStartNodes.add(n));
+            dfg.dfgs_end_nodes?.[idx]?.forEach(n => mergedEndNodes.add(n));
+        }
+    });
 
-      // Define spacing for nodes
+    const startNodes = Array.from(mergedStartNodes);
+    const endNodes = Array.from(mergedEndNodes);
+    const middleNodes = nodeIds.filter(id => !["START", "END"].includes(id));
 
-      const horizontalSpacing = 400; // Space between nodes horizontally for middle nodes
-      const individualVerticalSpacing = 60; // Adjusted vertical spacing for individual DFGs (closer to connected nodes)
+    // Tuned spacing
+    const groupVerticalSpread = 230;       // Strong vertical fan in start/end groups
+    const middleHorizontalSpacing = 450;   // Wide middle row
+    const levelGap = 320;                  // Distance between levels
+    const middleJitter = 60;               // Subtle wave in middle
 
-      // Group nodes by their type (start, end, both)
-      const startNodes = Array.from(mergedStartNodes);
-      const endNodes = Array.from(mergedEndNodes);
-      const middleNodes = nodeIds.filter(id => mergedStartNodes.has(id) && mergedEndNodes.has(id));
+    // Symmetric vertical spread helper
+    const spreadVertically = (baseY, index, total) => {
+        if (total <= 1) return baseY;
+        const progress = (index / (total - 1)) - 0.5; // -0.5 to +0.5
+        return baseY + progress * groupVerticalSpread * 2;
+    };
 
-      // Position start nodes (upper half)
-      startNodes.forEach((id, idx) => {
-          nodePositions.current[id] = {
-              x: 100, // Place at the center horizontally
-              y: -individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each start node
-          };
-      });
+    const middleJitterFunc = (index, total) => {
+        if (total <= 1) return 0;
+        const progress = (index / (total - 1)) - 0.5;
+        return progress * middleJitter * 2;
+    };
 
-      // Position end nodes (lower half)
-      endNodes.forEach((id, idx) => {
-          nodePositions.current[id] = {
-              x: 0, // Place at the center horizontally
-              y: individualVerticalSpacing * (idx + 1), // Adjusted vertical spacing for each end node
-          };
-      });
+    // 1. START node — highest point
+    nodePositions.current["START"] = {
+        x: 0,
+        y: -levelGap - 80, // A bit more padding above
+    };
 
-      // Position middle nodes (spread horizontally with enough space)
-      const horizontalStartX = -(middleNodes.length - 1) * horizontalSpacing / 2; // Center the middle nodes horizontally
-      middleNodes.forEach((id, idx) => {
-          nodePositions.current[id] = {
-              x: horizontalStartX + idx * horizontalSpacing, // Horizontal spacing
-              y: Math.random() * 250, // All placed on the same vertical level
-          };
-      });
+    // 2. Start nodes — fanned above the middle level
+    const startBaseY = -levelGap / 2;
+    startNodes.forEach((id, i) => {
+        nodePositions.current[id] = {
+            x: (i - (startNodes.length - 1) / 2) * 220,
+            y: spreadVertically(startBaseY, i, startNodes.length),
+        };
+    });
 
+    // 3. Middle nodes — center horizontal flow
+    if (middleNodes.length > 0) {
+        const totalWidth = (middleNodes.length - 1) * middleHorizontalSpacing;
+        const startX = -totalWidth / 2;
 
+        middleNodes.forEach((id, i) => {
+            nodePositions.current[id] = {
+                x: startX + i * middleHorizontalSpacing,
+                y: middleJitterFunc(i, middleNodes.length),
+            };
+        });
+    }
 
-      // Add positions for START and END nodes for individual DFGs (closer to connected nodes)
-      nodePositions.current["START"] = {
-          x: 0, // Place START node at the center horizontally
-          y: -individualVerticalSpacing * ((startNodes.length/2) + 0.5), // Place it above all start nodes
-      };
-      nodePositions.current["END"] = {
-          x: 0, // Place END node at the center horizontally
-          y: individualVerticalSpacing * (endNodes.length+2), // Place it below all end nodes
-      };
+    // 4. End nodes — fanned, but strictly above END node
+    const endBaseY = levelGap / 2;
+    endNodes.forEach((id, i) => {
+        nodePositions.current[id] = {
+            x: (i - (endNodes.length - 1) / 2) * 220,
+            y: spreadVertically(endBaseY, i, endNodes.length),
+        };
+    });
 
-      // Log for debugging
-      //console.log(`Start Nodes: ${JSON.stringify(startNodes)}`);
-      //console.log(`End Nodes: ${JSON.stringify(endNodes)}`);
-      //console.log(`Middle Nodes: ${JSON.stringify(middleNodes)}`);
-      console.log(`Node Positions:`, nodePositions.current);
+    // 5. END node — dynamically placed BELOW the lowest end node
+    let maxEndY = levelGap + 60; // fallback if no end nodes
 
-  }, [dfg, selectedLogs]);
+    if (endNodes.length > 0) {
+        const endYs = endNodes.map(id => nodePositions.current[id].y);
+        const lowestEndY = Math.max(...endYs);
+        maxEndY = lowestEndY + 120; // Safe padding below the lowest end node
+    }
+
+    nodePositions.current["END"] = {
+        x: 0,
+        y: maxEndY,
+    };
+
+    // Force re-render
+    setLayoutKey(prev => prev + 1);
+
+}, [dfg, selectedLogs]);
 
   //vis network rendering logic
 useEffect(() => {
@@ -200,7 +226,7 @@ useEffect(() => {
           from, to, freq,
           label: showEdgeLabels ? String(freq) : undefined,
           font: showEdgeLabels ? { size: 20, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-          width: effectiveEdgeWidth, // <- now uses settings
+          width: Math.min((freq*1.1 + 0.3),3.5), // <- now uses settings
           arrows: { to: { enabled: true, scaleFactor: 0.5 } },
           smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
         })),
@@ -285,9 +311,14 @@ useEffect(() => {
           const [from, to] = k.split("->");
           return {
             from, to, freq,
-            label: showEdgeLabels ? String(freq) : undefined,
+            label: showEdgeLabels 
+            ? metrics === "elapsed" 
+              ? String(dfg.edge_stats?.[`${from}->${to}`]?.elapsed ) 
+              : String(freq) 
+            : undefined,
+
             font: showEdgeLabels ? { size: 25, strokeWidth: 3, strokeColor: "#ffffff" ,align: "horizontal", zIndex: 999} : undefined,
-            width: effectiveEdgeWidth, // <- now uses settings
+            width:Math.min(freq * 2 + 0.1, 8), // <- now uses settings
             arrows: { to: { enabled: true, scaleFactor: 0.7 } },
             smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1) },
             // offset label horizontally
@@ -299,7 +330,7 @@ useEffect(() => {
           from: "START",
           to: node,
           dashes: true,
-          width: effectiveEdgeWidth,
+          width: 2,
           arrows: { to: { enabled: true, scaleFactor: 0.5 } },
           smooth: { type: 'continuous', roundness: 0.7, offset: 1 }
         })),
@@ -307,7 +338,7 @@ useEffect(() => {
           from: node,
           to: "END",
           dashes: true,
-          width: effectiveEdgeWidth,
+          width: 2,
           color: "#97c2fc",
           arrows: { to: { enabled: true, scaleFactor: 0.5 } },
           smooth: { type: 'continuous', roundness: 0.9, offset: 1 }
@@ -344,15 +375,23 @@ useEffect(() => {
     }
   };
 
-  // ---------------- Node color logic ----------------
-  const getNodeColor = (stat, isMerged = false) => {
-    if (!isMerged || !stat) return nodeColor;
-    const { p_value, effect_size } = stat;
-    if (p_value >= significance) return nodeColor; // green
-    if (effect_size <= 0.15) return "#f6e58d";    // yellow
-    if (effect_size <= 0.5) return "#ffbe76";     // orange
-    return highlightColor;                         // red
-  };
+const getNodeColor = (stat, isMerged = false) => {
+  if (!isMerged || !stat) return nodeColor;
+
+  const es = Math.abs(stat.effect_size ?? 0);
+  const p = stat.p_value ?? 1;
+
+  // for elapsed: show effect even if not significant
+  if (metrics === "frequency" && p >= significance) {
+    return nodeColor;
+  }
+
+  if (es <= 0.15) return "#f6e58d";   // weak
+  if (es <= 0.5) return "#ffbe76";    // medium
+  return highlightColor;              // strong
+};
+
+
 
   const renderDFG = (nodes, edges, ref, logName) => {
   if (!ref.current) return;
@@ -544,6 +583,8 @@ network.on("click", params => {
     network.on(event, () => repositionNodeBubble());
   });
 };
+
+
  const logsPerPage = 3;
  const totalPages = Math.ceil(files.length / logsPerPage);
   const paginatedLogs = files.slice(logPage * logsPerPage, (logPage + 1) * logsPerPage);
@@ -676,7 +717,8 @@ if (dfg?.nodes) {
             )}
 
             {selectedLogs.map(name => (
-              <div key={name} style={{ marginBottom: 30 }}>
+              <div key={name} 
+              style={{ marginBottom: 30 }}>
                 <h2 style={{ fontWeight: 700, fontSize: 16 }}>{name} DFG</h2>
                 <div id={`dfg_${name}`}  style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
               </div>
