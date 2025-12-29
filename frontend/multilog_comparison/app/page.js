@@ -638,6 +638,7 @@ if (dfg?.nodes) {
                       </label>
                     ))}
 
+
                     {/* Pagination buttons */}
                     {files.length > logsPerPage && (
                       <div style={{ display: 'flex', justifyContent: 'flex-start', gap: 6, marginBottom: 20 }}>

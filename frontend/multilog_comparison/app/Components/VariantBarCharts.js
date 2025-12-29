@@ -7,7 +7,6 @@ export default function VariantBarCharts({ variants, logNames, selectedVariants,
   const [menuLoaded, setMenuLoaded] = useState(false);
   const [sortOrder, setSortOrder] = useState("ascending");
 
-  // Tooltip state for chevron hover
   const [chevronTooltip, setChevronTooltip] = useState({
     visible: false,
     text: "",
@@ -15,7 +14,6 @@ export default function VariantBarCharts({ variants, logNames, selectedVariants,
     y: 0
   });
 
-  // Pagination states
   const [variantPage, setVariantPage] = useState(0);
   const variantPageSize = 5;
   const [logPage, setLogPage] = useState(0);
@@ -114,7 +112,68 @@ export default function VariantBarCharts({ variants, logNames, selectedVariants,
             <button disabled={logPage === totalPaginationPages - 1} onClick={() => setLogPage(logPage + 1)} style={{ padding: '4px 10px', borderRadius: 4, border: '1px solid #ccc', cursor: logPage === totalPaginationPages - 1 ? 'not-allowed' : 'pointer' }}>Next</button>
           </div>
         )}
+
+{/* Activity Legend - Top Right, Horizontal Scrollable */}
+<div
+  style={{
+    position: "absolute",
+    top: 0,
+    right: 16,
+    background: "rgba(255, 255, 255, 0.95)",
+    border: "1px solid #e0e0e0",
+    borderRadius: "8px",
+    padding: "10px 12px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    maxWidth: "35%",          // limits width so it doesn't stretch too far left
+    maxHeight: "80px",        // keeps it compact vertically
+    overflowX: "auto",        // horizontal scroll
+    overflowY: "hidden",
+    zIndex: 9999,
+    fontSize: "12px",
+    display: "flex",
+    flexDirection: "column",
+  }}
+>
+  <div style={{ fontWeight: 700, marginBottom: 5, fontSize: "13px", color: "#333", flexShrink: 0 }}>
+    Activity Legend
+  </div>
+  <div
+    style={{
+      display: "flex",
+      gap: 12,
+      paddingBottom: 4,       // small space for scrollbar
+      minWidth: "max-content", // ensures items don't wrap or shrink
+    }}
+  >
+    {uniqueActivities.map((activity) => (
+      <div
+        key={activity}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <div
+          style={{
+            width: 14,
+            height: 14,
+            backgroundColor: getColorForActivity(activity),
+            borderRadius: "3px",
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ color: "#444" }}>{activity}</span>
       </div>
+    ))}
+  </div>
+</div>
+
+      </div>
+
+
 
       {!menuLoaded && <div>Loading menu...</div>}
 
@@ -145,7 +204,6 @@ export default function VariantBarCharts({ variants, logNames, selectedVariants,
                 onChange={() => onToggleVariant && onToggleVariant(v.key)}
               />
 
-              {/* Chevron steps with hover tooltip */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 0, position: 'relative' }}>
                 {v.sequence.map((s, i) => (
                   <div
