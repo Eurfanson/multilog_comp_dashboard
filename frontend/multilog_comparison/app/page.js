@@ -670,7 +670,7 @@ if (dfg?.nodes) {
             )}
           </motion.div>
 
-          {/* Move toggle outside the transformed sidebar so fixed positioning remains relative to viewport */}
+          {/* Sidebar toggle */}
           <button aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} onClick={() => setSidebarOpen(s => !s)}
             style={{
               position: 'fixed',
@@ -690,8 +690,7 @@ if (dfg?.nodes) {
               cursor: 'pointer',
               transition: 'left 0.35s cubic-bezier(.2,.8,.2,1), box-shadow 0.2s, border 0.2s, background 0.2s'
             }}>
-            {/* decorative seam to blend with sidebar when open */}
-            <div style={{ position: 'absolute', left: -8, top: 4, bottom: 4, width: 8, borderTopRightRadius: 6, borderBottomRightRadius: 6, background: sidebarOpen ? '#fff' : 'transparent', pointerEvents: 'none', boxShadow: sidebarOpen ? 'none' : 'none' }} />
+            <div style={{ position: 'absolute', left: -8, top: 4, bottom: 4, width: 8, borderTopRightRadius: 6, borderBottomRightRadius: 6, background: sidebarOpen ? '#fff' : 'transparent', pointerEvents: 'none' }} />
             <div style={{ width: 18, height: 12, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transform: sidebarOpen ? 'none' : 'rotateY(180deg)', transition: 'transform 0.2s' }}>
               <span style={{ display: 'block', height: 2, background: '#222', borderRadius: 2 }} />
               <span style={{ display: 'block', height: 2, background: '#222', borderRadius: 2 }} />
@@ -700,7 +699,7 @@ if (dfg?.nodes) {
           </button>
 
           {/* Main content area */}
-          <div style={{ flex: 1, padding: 30, overflowY: "auto" }}>
+          <div style={{ flex: 1, padding: 30, overflowY: "auto", position: "relative" }}>
             
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h1 style={{ fontWeight: 700, fontSize: 22 }}>Dashboard</h1>
@@ -708,6 +707,44 @@ if (dfg?.nodes) {
                 <img src="/gear.png" alt="Settings" style={{ width: 40, height: 40, display: 'block' }} />
               </button>
             </div>
+
+            {/* === NODE COLOR LEGEND (only for Merged DFG) === */}
+            {selectedLogs.length > 1 && dfg && (
+              <div style={{
+                position: "fixed",
+                top: 20,
+                right: 80, // leaves space for the gear button (40px wide + padding)
+                background: "rgba(255, 255, 255, 0.95)",
+                backdropFilter: "blur(10px)",
+                padding: "12px 16px",
+                borderRadius: 12,
+                boxShadow: "0 6px 20px rgba(0,0,0,0.1)",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#333",
+                zIndex: 9999,
+                border: "1px solid rgba(0,0,0,0.08)",
+                maxWidth: 260
+              }}>
+                <div style={{ marginBottom: 8, fontWeight: 700 }}>Node Significance (Merged)</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: 8, background: nodeColor }} />
+                  <span>Default / Not significant</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: 8, background: "#f6e58d" }} />
+                  <span>Weak difference (|ES| ≤ 0.15)</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: 8, background: "#ffbe76" }} />
+                  <span>Medium difference (0.15 &lt; |ES| ≤ 0.5)</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: 8, background: highlightColor }} />
+                  <span>Strong difference (|ES| &gt; 0.5)</span>
+                </div>
+              </div>
+            )}
 
             {selectedLogs.length > 1 && (
               <div style={{ marginBottom: 30 }}>
@@ -717,10 +754,9 @@ if (dfg?.nodes) {
             )}
 
             {selectedLogs.map(name => (
-              <div key={name} 
-              style={{ marginBottom: 30 }}>
+              <div key={name} style={{ marginBottom: 30 }}>
                 <h2 style={{ fontWeight: 700, fontSize: 16 }}>{name} DFG</h2>
-                <div id={`dfg_${name}`}  style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
+                <div id={`dfg_${name}`} style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
               </div>
             ))}
 
