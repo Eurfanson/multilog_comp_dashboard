@@ -618,7 +618,7 @@ if (dfg?.nodes) {
           {/* Sidebar */}
           <motion.div
             initial={{ width: 0 }}
-            animate={{ width: sidebarOpen ? '50vw' : 0, padding: sidebarOpen ? 20 : 0, opacity: sidebarOpen ? 1 : 0 }}
+            animate={{ width: sidebarOpen ? '80vw' : 0, padding: sidebarOpen ? 20 : 0, opacity: sidebarOpen ? 1 : 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 30 }}
             style={{ position: 'fixed', left: 0, top: 0, height: '100vh', background: '#fff', borderRadius: '0 20px 20px 0', boxShadow: sidebarOpen ? '4px 0 30px rgba(0,0,0,0.05)' : 'none', overflow: 'hidden', zIndex: 1000 }}
           >
@@ -675,7 +675,7 @@ if (dfg?.nodes) {
           <button aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'} onClick={() => setSidebarOpen(s => !s)}
             style={{
               position: 'fixed',
-              left: sidebarOpen ? 'calc(50vw - 24px)' : 0,
+              left: sidebarOpen ? 'calc(80vw - 24px)' : 0,
               top: 20,
               width: 48,
               height: 48,
