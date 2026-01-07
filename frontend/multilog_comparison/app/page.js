@@ -225,42 +225,83 @@ useEffect(() => {
 // find the maximum frequency for this DFG
 const maxFreq = Math.max(...dfg.dfgs[idx].map(e => e.freq));
 
-const edges = new DataSet(
-  [
-    ...dfg.dfgs[idx].map(({ from, to, freq }) => {
-      const minWidth = 0.5;  // minimum width for tiny freq
-      const maxWidth = 3.5;  // maximum width for edges
-      const exponent = 0.5;  // sqrt scaling
-      const width = minWidth + Math.pow(freq / maxFreq, exponent) * (maxWidth - minWidth);
+const edges = new DataSet([
+  // 主边：单个日志的 DFG
+  ...dfg.dfgs[idx].map(({ from, to, freq }) => {
+    const edgeKey = `${from.trim()}->${to.trim()}`; // 安全去空格
 
-      return {
-        from, to, freq,
-        label: showEdgeLabels ? String(freq) : "",
-        font: showEdgeLabels ? { size: 20, strokeWidth: 2, strokeColor: "#ffffff" } : "",
-        width, // <- scaled width
-        arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-        smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
-      };
-    }),
-    ...startNodes.map(node => ({
-      from: "START",
-      to: node,
-      dashes: true,
+    // === 计算平均转移时间（仅用于 elapsed 模式）===
+    let timeLabel = "";
+    if (metrics === "elapsed") {
+      const timeLists = dfg.edge_time_data?.[edgeKey] || [];
+      // 单个日志只对应一个 list（当前 idx）
+      const currentLogTimes = timeLists[idx] || [];
+      const validTimes = currentLogTimes.filter(t => t > 0);
+
+      if (validTimes.length > 0) {
+        const avgSeconds = validTimes.reduce((a, b) => a + b, 0) / validTimes.length;
+        if (avgSeconds >= 86400) {
+          timeLabel = `${(avgSeconds / 86400).toFixed(1)}d`;
+        } else if (avgSeconds >= 3600) {
+          timeLabel = `${(avgSeconds / 3600).toFixed(1)}h`;
+        } else if (avgSeconds >= 60) {
+          timeLabel = `${Math.round(avgSeconds / 60)}m`;
+        } else {
+          timeLabel = `${Math.round(avgSeconds)}s`;
+        }
+      } else {
+        timeLabel = "—";
+      }
+    }
+
+    // === 原来的宽度计算（完全不动）===
+    const minWidth = 0.5;
+    const maxWidth = 3.5;
+    const exponent = 0.5;
+    const width = minWidth + Math.pow(freq / maxFreq, exponent) * (maxWidth - minWidth);
+
+    // === label：elapsed 时显示时间，否则显示频率 ===
+    const displayLabel = showEdgeLabels
+      ? metrics === "elapsed"
+        ? timeLabel
+        : String(freq)
+      : "";
+
+    return {
+      from,
+      to,
+      freq,
+      label: displayLabel,
+      font: showEdgeLabels
+        ? { size: 20, strokeWidth: 2, strokeColor: "#ffffff" }
+        : "",
+      width,
       arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-      width: effectiveEdgeWidth,
-      smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 }
-    })),
-    ...endNodes.map(node => ({
-      from: node,
-      to: "END",
-      color: "#97c2fc",
-      dashes: true,
-      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-      width: effectiveEdgeWidth,
-      smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 }
-    }))
-  ]
-);
+      smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
+    };
+  }),
+
+  // START → 起始节点（完全不动）
+  ...startNodes.map(node => ({
+    from: "START",
+    to: node,
+    dashes: true,
+    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    width: effectiveEdgeWidth,
+    smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 }
+  })),
+
+  // 结束节点 → END（完全不动）
+  ...endNodes.map(node => ({
+    from: node,
+    to: "END",
+    color: "#97c2fc",
+    dashes: true,
+    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    width: effectiveEdgeWidth,
+    smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 }
+  }))
+]);
 
 
     renderDFG(nodes, edges, containerRefs.current[name], name);
@@ -321,51 +362,83 @@ const edges = new DataSet(
 // find the maximum frequency in mergedEdgesMap
 const maxFreq = Math.max(...Object.values(mergedEdgesMap));
 
-const mergedEdges = new DataSet(
-  [
-    ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
-      const [from, to] = k.split("->");
+const mergedEdges = new DataSet([
+  ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
+    const [from, to] = k.split("->");
+    const edgeKey = `${from.trim()}->${to.trim()}`; // 安全去空格
 
-      // edge width scaling using power (sqrt) for better large freq contrast
-      const minWidth = 0.5;  // minimum width for tiny freq
-      const maxWidth = 8;    // maximum width for very high freq
-      const exponent = 0.5;  // sqrt scaling
-      const width = minWidth + Math.pow(freq / maxFreq, exponent) * (maxWidth - minWidth);
+    // === 只计算时间标签，不影响任何样式 ===
+    let timeLabel = "";
+    if (metrics === "elapsed") {
+      const timeLists = dfg.edge_time_data?.[edgeKey] || [];
+      const allTimes = timeLists.flat().filter(t => t > 0);
+      
+      if (allTimes.length > 0) {
+        const avgSeconds = allTimes.reduce((a, b) => a + b, 0) / allTimes.length;
+        if (avgSeconds >= 86400) {
+          timeLabel = `${(avgSeconds / 86400).toFixed(1)}d`;
+        } else if (avgSeconds >= 3600) {
+          timeLabel = `${(avgSeconds / 3600).toFixed(1)}h`;
+        } else if (avgSeconds >= 60) {
+          timeLabel = `${Math.round(avgSeconds / 60)}m`;
+        } else {
+          timeLabel = `${Math.round(avgSeconds)}s`;
+        }
+      } else {
+        timeLabel = "—";
+      }
+    }
 
-      return {
-        from, to, freq,
-        label: showEdgeLabels 
-          ? metrics === "elapsed" 
-            ? String(dfg.edge_stats?.[`${from}->${to}`]?.elapsed ) 
-            : String(freq) 
-          : "",
-        font: showEdgeLabels ? { size: 25, strokeWidth: 3, strokeColor: "#ffffff" ,align: "horizontal", zIndex: 999} : "",
-        width, // <- scaled width
-        arrows: { to: { enabled: true, scaleFactor: 0.7 } },
-        smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1) },
-        labelOffset: { x: 10, y: 0 } 
-      };
-    }),
-    ...Array.from(mergedStartNodes).map(node => ({
-      from: "START",
-      to: node,
-      dashes: true,
-      width: 2,
-      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-      smooth: { type: 'continuous', roundness: 0.7, offset: 1 }
-    })),
-    ...Array.from(mergedEndNodes).map(node => ({
-      from: node,
-      to: "END",
-      dashes: true,
-      width: 2,
-      color: "#97c2fc",
-      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-      smooth: { type: 'continuous', roundness: 0.9, offset: 1 }
-    }))
-  ]
-);
+    // === 原来的宽度计算（完全不动）===
+    const minWidth = 0.5;
+    const maxWidth = 8;
+    const exponent = 0.5;
+    const width = minWidth + Math.pow(freq / maxFreq, exponent) * (maxWidth - minWidth);
 
+    // === 原来的 label 逻辑：elapsed 时显示时间，frequency 时显示频次 ===
+    const displayLabel = showEdgeLabels
+      ? metrics === "elapsed"
+        ? timeLabel
+        : String(freq)
+      : "";
+
+    return {
+      from,
+      to,
+      freq,
+      label: displayLabel,
+      font: showEdgeLabels 
+        ? { size: 25, strokeWidth: 3, strokeColor: "#ffffff", align: "horizontal", zIndex: 999 } 
+        : "",
+      width,
+      arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+      smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1) },
+      labelOffset: { x: 10, y: 0 }
+      // 注意：没有 color 属性 → 使用 vis-network 默认颜色，和你原来完全一致
+    };
+  }),
+
+  // START → start nodes（完全不动）
+  ...Array.from(mergedStartNodes).map(node => ({
+    from: "START",
+    to: node,
+    dashes: true,
+    width: 2,
+    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    smooth: { type: 'continuous', roundness: 0.7, offset: 1 }
+  })),
+
+  // End nodes → END（完全不动）
+  ...Array.from(mergedEndNodes).map(node => ({
+    from: node,
+    to: "END",
+    dashes: true,
+    width: 2,
+    color: "#97c2fc",
+    arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+    smooth: { type: 'continuous', roundness: 0.9, offset: 1 }
+  }))
+]);
 
     renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
   }
@@ -621,8 +694,15 @@ if (dfg?.nodes) {
 
   return (
     <div style={{ minHeight: "100vh", fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif", background: "#f3f3f7" }}>
-      {/* Edge context bubble */}
-      {dfg &&<EdgeBubble edgeBubble={edgeBubble} edge_stats={dfg.edge_stats} />}
+{dfg && (
+  <EdgeBubble
+    edgeBubble={edgeBubble}
+    edge_stats={dfg.edge_stats}
+    dfg={dfg}
+    metrics={metrics}
+    significance={significance}
+  />
+)}
 
       {/* Node context bubble (merged DFG only) */}
       <NodeBubble nodeBubble={nodeBubble} significance={significance} />

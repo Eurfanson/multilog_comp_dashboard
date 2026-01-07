@@ -8,6 +8,7 @@ from pm4py.algo.discovery.dfg import algorithm as dfg_discovery
 from scipy.stats import shapiro, kruskal, f_oneway, ttest_ind
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import scikit_posthocs as sp
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI()
@@ -284,13 +285,22 @@ async def dfg_multi(
                         effect_size = eta_squared_anova(stat, 1, n_total - 2)
                         test_name = "t-test"
                     else:
-                        stat, p = kruskal(*valid)
-                        effect_size = epsilon_squared_kruskal(stat, n_total, k)
-                        test_name = "Kruskal-Wallis"
                         try:
-                            df_post = sp.posthoc_dunn(valid, p_adjust="bonferroni")
-                            posthoc_res = df_post if isinstance(df_post, pd.DataFrame) else df_post.to_dict()
-                        except Exception:
+                            stat, p = kruskal(*valid)
+                            effect_size = epsilon_squared_kruskal(stat, n_total, k) if stat is not None else 0.0
+                            test_name = "Kruskal-Wallis"
+                            try:
+                                df_post = sp.posthoc_dunn(valid, p_adjust="bonferroni")
+                                posthoc_res = df_post if isinstance(df_post, pd.DataFrame) else df_post.to_dict()
+                            except Exception as e:
+                                print(f"Posthoc failed for edge/node {node}: {e}")
+                                posthoc_res = None
+                        except Exception as e:
+                            # 这里捕获 "All numbers are identical" 等退化情况
+                            print(f"Kruskal failed for {node} (degenerate case): {e}")
+                            stat, p = None, 1.0
+                            effect_size = 0.0
+                            test_name = "Kruskal-Wallis (no variation)"
                             posthoc_res = None
                 else:
                     if normal:
@@ -433,7 +443,47 @@ async def dfg_multi(
         }
         merged_dfg_significant = {e: f for e, f in merged_dfg.items() if e[0] in sig_nodes or e[1] in sig_nodes}
 
-                # ---------------- Edge Statistical Tests ----------------
+         # ---------------- Edge Statistical Tests ----------------
+        edge_time_dict = {}
+        for edge in merged_dfg.keys():
+            src, tgt = edge
+            per_log_lists = []
+            for df_idx, df in enumerate(dfs):
+                transition_times = []
+                for case, group in df.groupby("case:concept:name"):
+                    group = group.sort_values("time:timestamp").reset_index(drop=True)
+                    elapsed = group["elapsed_time"].values
+                    activities = group["concept:name"].values
+
+                    for i in range(len(activities) - 1):
+                        if activities[i] == src and activities[i+1] == tgt:
+                            time_diff = elapsed[i+1] - elapsed[i]
+                            if time_diff >= 0:
+                                transition_times.append(time_diff)
+                
+                per_log_lists.append(transition_times)
+                
+                # 控制台打印，看数据合不合理
+                if transition_times:
+                    print(f"Edge {src} → {tgt} | Log {names[df_idx]} "
+                          f"| Transitions: {len(transition_times)} "
+                          f"| Mean: {np.mean(transition_times):.2f}s "
+                          f"| Median: {np.median(transition_times):.2f}s "
+                          f"| Min: {np.min(transition_times):.2f}s "
+                          f"| Max: {np.max(transition_times):.2f}s")
+                else:
+                    print(f"Edge {src} → {tgt} | Log {names[df_idx]} | No transitions found")
+
+            edge_time_dict[f"{src}->{tgt}"] = per_log_lists
+
+        # 统计检验
+        stats_edge_time = compute_node_stats(edge_time_dict)
+
+        # 打印统计概览
+        print("\n=== Edge Transition Time Statistics ===")
+        for edge_key, stat in stats_edge_time.items():
+            sig = "Yes" if stat["p_value"] is not None and stat["p_value"] < 0.05 else "No"
+            print(f"{edge_key}: p={stat['p_value']}, test={stat['test']}, effect_size={stat['effect_size']}, significant={sig}")
         edge_stats_result = {}
         for edge in merged_dfg.keys():
             src, tgt = edge
@@ -519,6 +569,8 @@ async def dfg_multi(
             "stats": stats_result,
             "stats_elapsed": stats_elapsed,
             "edge_stats": edge_stats_result,
+            "stats_edge_time": stats_edge_time,        # ← 新增：统计结果（p值、显著性等）
+            "edge_time_data": edge_time_dict,          # ← 新增：原始转移时间列表（用于箱线图、平均值等）
             "log_names": names,
             "merged_dfg": merged_dfg_json,
             "merged_dfg_start_nodes": merged_dfg_start_nodes,
