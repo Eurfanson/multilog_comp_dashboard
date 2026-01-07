@@ -1,0 +1,21 @@
+case,activity,timestamp
+Case1,Submit Request,2025-11-05 04:40:00
+Case1,Quality Check,2025-11-05 19:22:00
+Case1,Submit Request,2025-11-05 03:20:00
+Case1,Quality Check,2025-11-05 10:25:00
+Case2,Quality Check,2025-11-06 12:11:00
+Case2,Submit Request,2025-11-07 10:44:00
+Case2,Submit Request,2025-11-05 12:02:00
+Case2,Submit Request,2025-11-05 04:01:00
+Case3,Quality Check,2025-11-04 08:58:00
+Case3,Quality Check,2025-11-05 15:58:00
+Case3,Quality Check,2025-11-04 02:36:00
+Case3,Quality Check,2025-11-06 08:26:00
+Case4,Quality Check,2025-11-07 02:48:00
+Case4,Submit Request,2025-11-06 04:38:00
+Case4,Quality Check,2025-11-05 19:10:00
+Case4,Quality Check,2025-11-05 00:35:00
+Case5,Quality Check,2025-11-07 10:29:00
+Case5,Quality Check,2025-11-04 03:40:00
+Case5,Quality Check,2025-11-05 12:40:00
+Case5,Quality Check,2025-11-06 15:22:00

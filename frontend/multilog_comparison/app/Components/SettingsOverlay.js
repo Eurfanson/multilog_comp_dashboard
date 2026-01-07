@@ -97,59 +97,7 @@ export default function SettingsOverlay({
             </button>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Significance Threshold */}
-              <label>
-                Significance Threshold
-                <input
-                  type="text"
-                  value={significanceInput}
-                  onChange={(e) => setSignificanceInput(e.target.value)}
-                  onBlur={() => {
-                    let val = parseFloat(significanceInput);
-                    if (isNaN(val)) val = 0.05;
-                    val = Math.min(Math.max(val, 0), 1);
-                    setSignificance(val);
-                    setSignificanceInput(val.toString());
-                  }}
-                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
-                />
-              </label>
 
-              {/* Node Size */}
-              <label>
-                Node Size
-                <input
-                  type="text"
-                  value={nodeSizeInput}
-                  onChange={(e) => setNodeSizeInput(e.target.value)}
-                  onBlur={() => {
-                    let val = parseInt(nodeSizeInput);
-                    if (isNaN(val)) val = 22;
-                    val = Math.min(Math.max(val, 5), 50);
-                    setNodeSize(val);
-                    setNodeSizeInput(val.toString());
-                  }}
-                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
-                />
-              </label>
-
-              {/* Edge Width */}
-              <label>
-                Edge Width
-                <input
-                  type="text"
-                  value={edgeWidthInput}
-                  onChange={(e) => setEdgeWidthInput(e.target.value)}
-                  onBlur={() => {
-                    let val = parseInt(edgeWidthInput);
-                    if (isNaN(val)) val = 2;
-                    val = Math.min(Math.max(val, 1), 10);
-                    setEdgeWidth(val);
-                    setEdgeWidthInput(val.toString());
-                  }}
-                  style={{ width: '100%', padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
-                />
-              </label>
 
               {/* Node Colors */}
               <label>

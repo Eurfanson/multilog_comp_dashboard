@@ -31,6 +31,8 @@ export default function Home() {
 // Keep this state in your component
 const [layoutKey, setLayoutKey] = useState(0);
 
+const [layout, setLayout] = useState("vertical");
+
     const handleFileChange = async e => {
     const uploadedFiles = Array.from(e.target.files);
     setFiles(uploadedFiles);
@@ -220,35 +222,46 @@ useEffect(() => {
       ]
     );
 
-    const edges = new DataSet(
-      [
-        ...dfg.dfgs[idx].map(({ from, to, freq }) => ({
-          from, to, freq,
-          label: showEdgeLabels ? String(freq) : undefined,
-          font: showEdgeLabels ? { size: 20, strokeWidth: 2, strokeColor: "#ffffff" } : undefined,
-          width: Math.min((freq*1.1 + 0.3),3.5), // <- now uses settings
-          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-          smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
-        })),
-        ...startNodes.map(node => ({
-          from: "START",
-          to: node,
-          dashes: true,
-          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-          width: effectiveEdgeWidth,
-          smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 }
-        })),
-        ...endNodes.map(node => ({
-          from: node,
-          to: "END",
-          color: "#97c2fc",
-          dashes: true,
-          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-          width: effectiveEdgeWidth,
-          smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 }
-        }))
-      ]
-    );
+// find the maximum frequency for this DFG
+const maxFreq = Math.max(...dfg.dfgs[idx].map(e => e.freq));
+
+const edges = new DataSet(
+  [
+    ...dfg.dfgs[idx].map(({ from, to, freq }) => {
+      const minWidth = 0.5;  // minimum width for tiny freq
+      const maxWidth = 3.5;  // maximum width for edges
+      const exponent = 0.5;  // sqrt scaling
+      const width = minWidth + Math.pow(freq / maxFreq, exponent) * (maxWidth - minWidth);
+
+      return {
+        from, to, freq,
+        label: showEdgeLabels ? String(freq) : "",
+        font: showEdgeLabels ? { size: 20, strokeWidth: 2, strokeColor: "#ffffff" } : "",
+        width, // <- scaled width
+        arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+        smooth: { type: 'continuous', roundness: 0.7, offset: 0.7 }
+      };
+    }),
+    ...startNodes.map(node => ({
+      from: "START",
+      to: node,
+      dashes: true,
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      width: effectiveEdgeWidth,
+      smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 }
+    })),
+    ...endNodes.map(node => ({
+      from: node,
+      to: "END",
+      color: "#97c2fc",
+      dashes: true,
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      width: effectiveEdgeWidth,
+      smooth: { type: 'continuous', roundness: 0.3, offset: 0.3 }
+    }))
+  ]
+);
+
 
     renderDFG(nodes, edges, containerRefs.current[name], name);
   });
@@ -305,46 +318,54 @@ useEffect(() => {
       });
     });
 
-    const mergedEdges = new DataSet(
-      [
-        ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
-          const [from, to] = k.split("->");
-          return {
-            from, to, freq,
-            label: showEdgeLabels 
-            ? metrics === "elapsed" 
-              ? String(dfg.edge_stats?.[`${from}->${to}`]?.elapsed ) 
-              : String(freq) 
-            : undefined,
+// find the maximum frequency in mergedEdgesMap
+const maxFreq = Math.max(...Object.values(mergedEdgesMap));
 
-            font: showEdgeLabels ? { size: 25, strokeWidth: 3, strokeColor: "#ffffff" ,align: "horizontal", zIndex: 999} : undefined,
-            width:Math.min(freq * 2 + 0.1, 8), // <- now uses settings
-            arrows: { to: { enabled: true, scaleFactor: 0.7 } },
-            smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1) },
-            // offset label horizontally
-            labelOffset: { x: 10, y: 0 } 
-            
-          };
-        }),
-        ...Array.from(mergedStartNodes).map(node => ({
-          from: "START",
-          to: node,
-          dashes: true,
-          width: 2,
-          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-          smooth: { type: 'continuous', roundness: 0.7, offset: 1 }
-        })),
-        ...Array.from(mergedEndNodes).map(node => ({
-          from: node,
-          to: "END",
-          dashes: true,
-          width: 2,
-          color: "#97c2fc",
-          arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-          smooth: { type: 'continuous', roundness: 0.9, offset: 1 }
-        }))
-      ]
-    );
+const mergedEdges = new DataSet(
+  [
+    ...Object.entries(mergedEdgesMap).map(([k, freq]) => {
+      const [from, to] = k.split("->");
+
+      // edge width scaling using power (sqrt) for better large freq contrast
+      const minWidth = 0.5;  // minimum width for tiny freq
+      const maxWidth = 8;    // maximum width for very high freq
+      const exponent = 0.5;  // sqrt scaling
+      const width = minWidth + Math.pow(freq / maxFreq, exponent) * (maxWidth - minWidth);
+
+      return {
+        from, to, freq,
+        label: showEdgeLabels 
+          ? metrics === "elapsed" 
+            ? String(dfg.edge_stats?.[`${from}->${to}`]?.elapsed ) 
+            : String(freq) 
+          : "",
+        font: showEdgeLabels ? { size: 25, strokeWidth: 3, strokeColor: "#ffffff" ,align: "horizontal", zIndex: 999} : "",
+        width, // <- scaled width
+        arrows: { to: { enabled: true, scaleFactor: 0.7 } },
+        smooth: { type: 'continuous', roundness: 0.5, offset: 0.8 + (Math.random() * 0.1) },
+        labelOffset: { x: 10, y: 0 } 
+      };
+    }),
+    ...Array.from(mergedStartNodes).map(node => ({
+      from: "START",
+      to: node,
+      dashes: true,
+      width: 2,
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      smooth: { type: 'continuous', roundness: 0.7, offset: 1 }
+    })),
+    ...Array.from(mergedEndNodes).map(node => ({
+      from: node,
+      to: "END",
+      dashes: true,
+      width: 2,
+      color: "#97c2fc",
+      arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+      smooth: { type: 'continuous', roundness: 0.9, offset: 1 }
+    }))
+  ]
+);
+
 
     renderDFG(mergedNodes, mergedEdges, containerRefs.current["merged"], "merged");
   }
@@ -744,6 +765,24 @@ if (dfg?.nodes) {
                   <div style={{ width: 16, height: 16, borderRadius: 8, background: highlightColor }} />
                   <span>Strong difference (|ES| &gt; 0.5)</span>
                 </div>
+                <button
+                  onClick={() => setLayout(l => (l === "vertical" ? "horizontal" : "vertical"))}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+                    marginBottom: 20,
+                    marginTop: 20
+                  }}
+                >
+                  {layout === "vertical" ? "Horizontal Grid View" : "Vertical List View"}
+                </button>
+
               </div>
             )}
 
@@ -754,12 +793,30 @@ if (dfg?.nodes) {
               </div>
             )}
 
-            {selectedLogs.map(name => (
-              <div key={name} style={{ marginBottom: 30 }}>
-                <h2 style={{ fontWeight: 700, fontSize: 16 }}>{name} DFG</h2>
-                <div id={`dfg_${name}`} style={{ height: 400, borderRadius: 16, background: "#fff", boxShadow: "0 8px 24px rgba(0,0,0,0.06)" }} />
-              </div>
-            ))}
+            <div
+              style={{
+                display: layout === "horizontal" ? "grid" : "block",
+                gridTemplateColumns:
+                  layout === "horizontal" ? "repeat(3, 1fr)" : "none",
+                gap: 20
+              }}
+            >
+              {selectedLogs.map(name => (
+                <div key={name}>
+                  <h2 style={{ fontWeight: 700, fontSize: 16 }}>{name} DFG</h2>
+                  <div
+                    id={`dfg_${name}`}
+                    style={{
+                      height: layout === "horizontal" ? 250 : 400,
+                      borderRadius: 16,
+                      background: "#fff",
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.06)"
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
 
             {dfg && <StatsDashboard stats={metrics === "frequency" ? dfg.stats : dfg.stats_elapsed} edge_stats={dfg.edge_stats} />}
           </div>
