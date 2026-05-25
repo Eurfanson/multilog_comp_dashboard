@@ -9,7 +9,6 @@ import VariantBarCharts from "./Components/VariantBarCharts";
 import EdgeBubble from "./Components/EdgeBubble";
 import NodeBubble from "./Components/NodeBubble";
 import SettingsOverlay from "./Components/SettingsOverlay";
-import { useSession, signIn, signOut } from "next-auth/react"; 
 import { getSteps } from "./Hooks/steps";
 
 // ---------------- Home / Main Component ----------------
@@ -56,19 +55,6 @@ const [layout, setLayout] = useState("vertical");
   // Onboarding steps
   const steps = getSteps({ handleFileChange, setStep });
 
-  // ---------------- Auth Logic ----------------
-  const { data: session, status } = useSession(); 
-
-  // Authentication effect
-   useEffect(() => {
-    if (status === "loading") return; // 等待加载完成
-
-    if (!session) {
-      // 如果未登录，直接调用GitHub登录
-      signIn("github");
-    }
-  }, [session, status]); //  session, status for auth check
-  
   useEffect(() => { edgeBubbleRef.current = edgeBubble; }, [edgeBubble]); // keep a ref in sync so vis event handlers can read latest bubble state
  
   useEffect(() => { nodeBubbleRef.current = nodeBubble; }, [nodeBubble]);

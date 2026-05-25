@@ -91,14 +91,3 @@ export const useDfgState = () => {
   };
 };
 
-export const useAuth = () => {
-  const { data: session, status } = useSession();
-
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      signIn("github"); // triggers GitHub login redirect
-    }
-  }, [status]);
-
-  return session;
-};
